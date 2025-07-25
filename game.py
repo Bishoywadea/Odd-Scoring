@@ -43,12 +43,13 @@ class Game:
         self.overlay = Gtk.Overlay()
         self.overlay.add(self.main_box)
         self.overlay.add_overlay(self.help_overlay)
+        self.help_overlay.hide()
         
         # Apply initial theme
         self._apply_theme()
+        self._update_main_content_colors()
         
         # Initially hide help
-        self.help_overlay.hide()
     
     def get_widget(self):
         """Return the main widget to be used in the activity"""
@@ -100,12 +101,6 @@ class Game:
             border-radius: 10px;
             padding: 30px;
         }}
-        .help-title {{
-            font-size: 24px;
-            font-weight: bold;
-            color: {text_color};
-            margin-bottom: 15px;
-        }}
         .help-content {{
             font-size: 14px;
             color: {text_color};
@@ -132,14 +127,6 @@ class Game:
         theme_colors = Theme.LIGHT if self.current_theme == 'LIGHT' else Theme.DARK
         text_color = self._rgb_to_css(theme_colors['TEXT'])
         
-        # Update title color
-        if hasattr(self, 'title_label'):
-            self.title_label.set_markup(f"<span size='x-large' weight='bold' color='{text_color}'>Magic Moving Game</span>")
-        
-        # Update info label color
-        if hasattr(self, 'info_label'):
-            self.info_label.set_markup(f"<span size='medium' color='{text_color}'>Grid Size: {self.N} cells | Current Position: {self.current_position}</span>")
-        
         # Update cell colors
         for i, cell in enumerate(self.cell_labels):
             if i == self.current_position:
@@ -156,7 +143,7 @@ class Game:
         self.main_box.set_margin_right(0)
         self.main_box.set_margin_top(0)
         self.main_box.set_margin_bottom(0)
-        
+
         # Create grid container
         grid_container = Gtk.VBox(spacing=10)
         grid_container.set_halign(Gtk.Align.CENTER)
@@ -171,19 +158,9 @@ class Game:
         for i in range(self.N):
             # Create cell
             cell = Gtk.Label()
-            theme_colors = Theme.LIGHT if self.current_theme == 'LIGHT' else Theme.DARK
-            cell.set_markup(f"<span size='large' weight='bold'>{i}</span>")
             cell.set_size_request(60, 60)
             cell.set_halign(Gtk.Align.CENTER)
             cell.set_valign(Gtk.Align.CENTER)
-            
-            # Style the cell
-            if i == self.current_position:
-                # Character position
-                cell.set_markup(f"<span size='large' weight='bold' color='red'>🚶\n{i}</span>")
-            elif i == 0:
-                # Finish line
-                cell.set_markup(f"<span size='large' weight='bold' color='green'>🏁\n{i}</span>")
             
             # Add border
             cell_frame = Gtk.Frame()
@@ -239,13 +216,6 @@ Try to make the total number of steps even."""
         help_panel.set_margin_right(30)
         help_panel.set_margin_top(30)
         help_panel.set_margin_bottom(30)
-        
-        # Title only (no close button) - fixed markup
-        help_title = Gtk.Label()
-        help_title.set_markup("<span size='24000' weight='bold'>HELP</span>")
-        help_title.set_halign(Gtk.Align.CENTER)
-        
-        help_panel.pack_start(help_title, False, False, 0)
         
         # Help content
         help_content = Gtk.Label()
@@ -309,4 +279,19 @@ Try to make the total number of steps even."""
     
     def reset_game(self):
         """Reset the game with a new random N"""
-        pass
+        self.N = random.randint(8, 20)
+        self.current_position = self.N - 1
+
+        if hasattr(self, 'main_box'):
+            self.overlay.remove(self.main_box)
+            self.main_box.destroy()
+
+        self._create_main_content()
+
+        self.overlay.add(self.main_box)
+        
+        self._apply_theme()
+        self._update_main_content_colors()
+
+        self.overlay.show_all()
+        
