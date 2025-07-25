@@ -41,15 +41,15 @@ class Game:
         
         # Create overlay container
         self.overlay = Gtk.Overlay()
-        self.overlay.add(self.main_box)
         self.overlay.add_overlay(self.help_overlay)
-        self.help_overlay.hide()
+        self.overlay.add(self.main_box)
         
         # Apply initial theme
         self._apply_theme()
         self._update_main_content_colors()
         
         # Initially hide help
+        self.main_box.show_all()
     
     def get_widget(self):
         """Return the main widget to be used in the activity"""
@@ -293,5 +293,5 @@ Try to make the total number of steps even."""
         self._apply_theme()
         self._update_main_content_colors()
 
-        self.overlay.show_all()
+        self.main_box.show_all()
         
