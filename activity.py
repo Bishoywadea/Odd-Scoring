@@ -16,14 +16,14 @@
 
 import gi
 gi.require_version('Gtk', '3.0')
-from gi.repository import Gtk, Gdk
+from gi.repository import Gtk
 from sugar3.activity import activity
 from sugar3.graphics.toolbarbox import ToolbarBox
 from sugar3.activity.widgets import ActivityToolbarButton
 from sugar3.activity.widgets import StopButton
 from sugar3.graphics.toolbutton import ToolButton
-import os
-from game import Game 
+
+from game import Game  # Import the Game class
 
 class OddScoring(activity.Activity):
     def __init__(self, handle):
@@ -47,6 +47,13 @@ class OddScoring(activity.Activity):
         toolbar_box.toolbar.insert(activity_button, -1)
         activity_button.show()
         
+        # Theme button
+        theme_button = ToolButton("view-refresh")
+        theme_button.set_tooltip("Toggle Theme")
+        theme_button.connect("clicked", self._toggle_theme)
+        toolbar_box.toolbar.insert(theme_button, -1)
+        theme_button.show()
+        
         # Help button
         help_button = ToolButton("toolbar-help")
         help_button.set_tooltip("Show/Hide Help")
@@ -68,6 +75,18 @@ class OddScoring(activity.Activity):
         self.set_toolbar_box(toolbar_box)
         toolbar_box.show_all()
     
+    def _toggle_theme(self, button):
+        """Toggle theme"""
+        self.game.toggle_theme()
+    
     def _show_help(self, button):
         """Toggle help panel"""
         self.game.toggle_help()
+    
+    def read_file(self, file_path):
+        """Handle file reading if needed"""
+        pass
+    
+    def write_file(self, file_path):
+        """Handle file writing if needed"""
+        pass

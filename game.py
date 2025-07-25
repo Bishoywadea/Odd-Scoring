@@ -19,15 +19,19 @@ gi.require_version('Gtk', '3.0')
 from gi.repository import Gtk, Gdk
 import os
 import random
+from config import Theme
 
 class Game:
     def __init__(self):
         # Help panel state
         self.show_help = False
         
+        # Theme state
+        self.current_theme = 'LIGHT'
+        
         # Game state
-        self.N = random.randint(8, 20)
-        self.current_position = self.N - 1
+        self.N = random.randint(8, 20)  # Random grid size
+        self.current_position = self.N - 1  # Start at rightmost cell
         
         # Create main content
         self._create_main_content()
@@ -40,6 +44,9 @@ class Game:
         self.overlay.add(self.main_box)
         self.overlay.add_overlay(self.help_overlay)
         
+        # Apply initial theme
+        self._apply_theme()
+        
         # Initially hide help
         self.help_overlay.hide()
     
@@ -47,19 +54,102 @@ class Game:
         """Return the main widget to be used in the activity"""
         return self.overlay
     
+    def _rgb_to_css(self, color):
+        """Convert RGB tuple to CSS color string"""
+        if len(color) == 3:
+            return f"rgb({color[0]}, {color[1]}, {color[2]})"
+        elif len(color) == 4:
+            return f"rgba({color[0]}, {color[1]}, {color[2]}, {color[3]/255})"
+        return "black"
+    
+    def _apply_theme(self):
+        """Apply current theme colors to UI"""
+        theme_colors = Theme.LIGHT if self.current_theme == 'LIGHT' else Theme.DARK
+        
+        # Update main background
+        self.main_box.override_background_color(
+            Gtk.StateFlags.NORMAL, 
+            Gdk.RGBA(theme_colors['BG'][0]/255, theme_colors['BG'][1]/255, theme_colors['BG'][2]/255, 1.0)
+        )
+        
+        # Update CSS for help overlay
+        self._update_help_theme()
+    
+    def _update_help_theme(self):
+        """Update help overlay theme"""
+        theme_colors = Theme.LIGHT if self.current_theme == 'LIGHT' else Theme.DARK
+        
+        css_provider = Gtk.CssProvider()
+        help_bg_color = self._rgb_to_css((*theme_colors['BG'], 220))
+        card_bg_color = self._rgb_to_css(theme_colors['CARD_BG'])
+        text_color = self._rgb_to_css(theme_colors['TEXT'])
+        
+        css_data = f"""
+        .help-overlay {{
+            background-color: {help_bg_color};
+        }}
+        .help-panel {{
+            background-color: {card_bg_color};
+            border: 3px solid {self._rgb_to_css(theme_colors['GRAY_DARK'])};
+            border-radius: 10px;
+            padding: 30px;
+        }}
+        .help-title {{
+            font-size: 24px;
+            font-weight: bold;
+            color: {text_color};
+            margin-bottom: 15px;
+        }}
+        .help-content {{
+            font-size: 14px;
+            color: {text_color};
+        }}
+        """.encode('utf-8')
+        
+        css_provider.load_from_data(css_data)
+        
+        style_context = Gtk.StyleContext()
+        style_context.add_provider_for_screen(
+            Gdk.Screen.get_default(),
+            css_provider,
+            Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
+        )
+    
+    def toggle_theme(self):
+        """Toggle between light and dark theme"""
+        self.current_theme = 'DARK' if self.current_theme == 'LIGHT' else 'LIGHT'
+        self._apply_theme()
+        self._update_main_content_colors()
+    
+    def _update_main_content_colors(self):
+        """Update main content colors based on current theme"""
+        theme_colors = Theme.LIGHT if self.current_theme == 'LIGHT' else Theme.DARK
+        text_color = self._rgb_to_css(theme_colors['TEXT'])
+        
+        # Update title color
+        if hasattr(self, 'title_label'):
+            self.title_label.set_markup(f"<span size='x-large' weight='bold' color='{text_color}'>Magic Moving Game</span>")
+        
+        # Update info label color
+        if hasattr(self, 'info_label'):
+            self.info_label.set_markup(f"<span size='medium' color='{text_color}'>Grid Size: {self.N} cells | Current Position: {self.current_position}</span>")
+        
+        # Update cell colors
+        for i, cell in enumerate(self.cell_labels):
+            if i == self.current_position:
+                cell.set_markup(f"<span size='large' weight='bold' color='{self._rgb_to_css(theme_colors['ERROR'])}'>🚶\n{i}</span>")
+            elif i == 0:
+                cell.set_markup(f"<span size='large' weight='bold' color='{self._rgb_to_css(theme_colors['SUCCESS'])}'>🏁\n{i}</span>")
+            else:
+                cell.set_markup(f"<span size='large' weight='bold' color='{text_color}'>{i}</span>")
+    
     def _create_main_content(self):
         # Create main container
         self.main_box = Gtk.VBox(spacing=20)
-        self.main_box.set_margin_left(50)
-        self.main_box.set_margin_right(50)
-        self.main_box.set_margin_top(50)
-        self.main_box.set_margin_bottom(50)
-        
-        # Game title
-        title = Gtk.Label()
-        title.set_markup("<span size='x-large' weight='bold'>Magic Moving Game</span>")
-        title.set_halign(Gtk.Align.CENTER)
-        self.main_box.pack_start(title, False, False, 0)
+        self.main_box.set_margin_left(0)
+        self.main_box.set_margin_right(0)
+        self.main_box.set_margin_top(0)
+        self.main_box.set_margin_bottom(0)
         
         # Create grid container
         grid_container = Gtk.VBox(spacing=10)
@@ -75,6 +165,7 @@ class Game:
         for i in range(self.N):
             # Create cell
             cell = Gtk.Label()
+            theme_colors = Theme.LIGHT if self.current_theme == 'LIGHT' else Theme.DARK
             cell.set_markup(f"<span size='large' weight='bold'>{i}</span>")
             cell.set_size_request(60, 60)
             cell.set_halign(Gtk.Align.CENTER)
@@ -101,22 +192,9 @@ class Game:
         # Add grid to main box
         self.main_box.pack_start(grid_container, True, True, 0)
         
-        # Game info
-        info_label = Gtk.Label()
-        info_label.set_markup(f"<span size='medium'>Grid Size: {self.N} cells | Current Position: {self.current_position}</span>")
-        info_label.set_halign(Gtk.Align.CENTER)
-        self.main_box.pack_start(info_label, False, False, 0)
     
     def _load_help_content(self):
-        """Load help content from help.txt file"""
-        help_file_path = os.path.join(os.path.dirname(__file__), 'help.txt')
-        
-        try:
-            with open(help_file_path, 'r', encoding='utf-8') as f:
-                return f.read()
-        except FileNotFoundError:
-            # Default help content if file doesn't exist
-            return """HOW TO PLAY:
+        return """HOW TO PLAY:
 • Character starts at the rightmost cell
 • Take turns moving LEFT by 1, 2, or 3 spaces
 • Game ends when character reaches the finish line (left side)
@@ -139,37 +217,6 @@ Try to make the total number of steps even."""
         self.help_overlay = Gtk.EventBox()
         self.help_overlay.set_halign(Gtk.Align.FILL)
         self.help_overlay.set_valign(Gtk.Align.FILL)
-        
-        # Set background color with transparency (like pygame version)
-        css_provider = Gtk.CssProvider()
-        css_provider.load_from_data(b"""
-        .help-overlay {
-            background-color: rgba(255, 255, 255, 0.85);
-        }
-        .help-panel {
-            background-color: white;
-            border: 3px solid black;
-            border-radius: 10px;
-            padding: 30px;
-        }
-        .help-title {
-            font-size: 24px;
-            font-weight: bold;
-            color: black;
-            margin-bottom: 15px;
-        }
-        .help-content {
-            font-size: 14px;
-            color: black;
-        }
-        """)
-        
-        style_context = Gtk.StyleContext()
-        style_context.add_provider_for_screen(
-            Gdk.Screen.get_default(),
-            css_provider,
-            Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
-        )
         
         self.help_overlay.get_style_context().add_class("help-overlay")
         
