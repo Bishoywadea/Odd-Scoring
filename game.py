@@ -57,10 +57,16 @@ class Game:
     def _rgb_to_css(self, color):
         """Convert RGB tuple to CSS color string"""
         if len(color) == 3:
-            return f"rgb({color[0]}, {color[1]}, {color[2]})"
+            return f"#{color[0]:02x}{color[1]:02x}{color[2]:02x}"
         elif len(color) == 4:
             return f"rgba({color[0]}, {color[1]}, {color[2]}, {color[3]/255})"
-        return "black"
+        return "#000000"
+
+    def _rgb_to_gdk(self, color):
+        """Convert RGB tuple to Gdk.RGBA"""
+        if len(color) >= 3:
+            return Gdk.RGBA(color[0]/255, color[1]/255, color[2]/255, 1.0)
+        return Gdk.RGBA(0, 0, 0, 1.0)
     
     def _apply_theme(self):
         """Apply current theme colors to UI"""
@@ -69,7 +75,7 @@ class Game:
         # Update main background
         self.main_box.override_background_color(
             Gtk.StateFlags.NORMAL, 
-            Gdk.RGBA(theme_colors['BG'][0]/255, theme_colors['BG'][1]/255, theme_colors['BG'][2]/255, 1.0)
+            self._rgb_to_gdk(theme_colors['BG'])
         )
         
         # Update CSS for help overlay
@@ -80,7 +86,7 @@ class Game:
         theme_colors = Theme.LIGHT if self.current_theme == 'LIGHT' else Theme.DARK
         
         css_provider = Gtk.CssProvider()
-        help_bg_color = self._rgb_to_css((*theme_colors['BG'], 220))
+        help_bg_color = f"rgba({theme_colors['BG'][0]}, {theme_colors['BG'][1]}, {theme_colors['BG'][2]}, 0.85)"
         card_bg_color = self._rgb_to_css(theme_colors['CARD_BG'])
         text_color = self._rgb_to_css(theme_colors['TEXT'])
         
@@ -300,3 +306,7 @@ Try to make the total number of steps even."""
             self.hide_help()
             return True
         return False
+    
+    def reset_game(self):
+        """Reset the game with a new random N"""
+        pass

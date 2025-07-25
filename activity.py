@@ -46,9 +46,16 @@ class OddScoring(activity.Activity):
         activity_button = ActivityToolbarButton(self)
         toolbar_box.toolbar.insert(activity_button, -1)
         activity_button.show()
+
+        # Reset button
+        reset_button = ToolButton("view-refresh")
+        reset_button.set_tooltip("New Game")
+        reset_button.connect("clicked", self._reset_game)
+        toolbar_box.toolbar.insert(reset_button, -1)
+        reset_button.show()
         
         # Theme button
-        theme_button = ToolButton("view-refresh")
+        theme_button = ToolButton("camera")
         theme_button.set_tooltip("Toggle Theme")
         theme_button.connect("clicked", self._toggle_theme)
         toolbar_box.toolbar.insert(theme_button, -1)
@@ -78,6 +85,10 @@ class OddScoring(activity.Activity):
     def _toggle_theme(self, button):
         """Toggle theme"""
         self.game.toggle_theme()
+
+    def _reset_game(self, button):
+        """Reset the game"""
+        self.game.reset_game()
     
     def _show_help(self, button):
         """Toggle help panel"""
