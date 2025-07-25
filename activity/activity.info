@@ -1,0 +1,8 @@
+[Activity]
+name = MagicMoving
+activity_version = 1
+bundle_id = org.sugarlabs.MagicMoving
+exec = sugar-activity3 activity.MagicMoving
+icon = activity-magicmoving
+license = GPLv2+
+repository = https://github.com/Bishoywadea/Magic-Moving-Game.git
