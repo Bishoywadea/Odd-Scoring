@@ -12,8 +12,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
+# along with this program. If not, see <http://www.gnu.org/licenses/>.
 
 import gi
 gi.require_version('Gtk', '3.0')
@@ -24,6 +23,8 @@ from sugar3.activity.widgets import ActivityToolbarButton
 from sugar3.activity.widgets import StopButton
 from sugar3.graphics.toolbutton import ToolButton
 
+from game import Game  # Import the Game class
+
 class OddScoring(activity.Activity):
     def __init__(self, handle):
         activity.Activity.__init__(self, handle)
@@ -31,19 +32,12 @@ class OddScoring(activity.Activity):
         # Create toolbar
         self._create_toolbar()
         
-        # Create a simple label
-        label = Gtk.Label()
-        label.set_markup("<span size='x-large' weight='bold'>Odd Scoring Game</span>")
-        label.set_halign(Gtk.Align.CENTER)
-        label.set_valign(Gtk.Align.CENTER)
+        # Create game instance
+        self.game = Game()
         
-        # Create a main box to hold everything
-        main_box = Gtk.VBox()
-        main_box.pack_start(label, True, True, 0)
-        
-        # Add to the activity canvas
-        self.set_canvas(main_box)
-        main_box.show_all()
+        # Set the game widget as the canvas
+        self.set_canvas(self.game.get_widget())
+        self.game.get_widget().show_all()
     
     def _create_toolbar(self):
         toolbar_box = ToolbarBox()
@@ -52,6 +46,13 @@ class OddScoring(activity.Activity):
         activity_button = ActivityToolbarButton(self)
         toolbar_box.toolbar.insert(activity_button, -1)
         activity_button.show()
+        
+        # Help button
+        help_button = ToolButton("toolbar-help")
+        help_button.set_tooltip("Show/Hide Help")
+        help_button.connect("clicked", self._show_help)
+        toolbar_box.toolbar.insert(help_button, -1)
+        help_button.show()
         
         # Separator
         separator = Gtk.SeparatorToolItem()
@@ -66,3 +67,19 @@ class OddScoring(activity.Activity):
         
         self.set_toolbar_box(toolbar_box)
         toolbar_box.show_all()
+    
+    def _show_help(self, button):
+        """Toggle help panel"""
+        self.game.toggle_help()
+    
+    def read_file(self, file_path):
+        """Handle file reading if needed"""
+        pass
+    
+    def write_file(self, file_path):
+        """Handle file writing if needed"""
+        pass
+    
+    def close(self):
+        """Clean up when closing"""
+        self.game.quit()
