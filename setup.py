@@ -1,4 +1,4 @@
-# This file is part of the Magic Moving Game.
+# This file is part of the Odd Scoring Game.
 # Copyright (C) 2025 Bishoy Wadea
 #
 # This program is free software: you can redistribute it and/or modify

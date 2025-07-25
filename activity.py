@@ -1,4 +1,4 @@
-# This file is part of the Magic Moving Game.
+# This file is part of the Odd Scoring Game.
 # Copyright (C) 2025 Bishoy Wadea
 #
 # This program is free software: you can redistribute it and/or modify
@@ -24,7 +24,7 @@ from sugar3.activity.widgets import ActivityToolbarButton
 from sugar3.activity.widgets import StopButton
 from sugar3.graphics.toolbutton import ToolButton
 
-class MagicMoving(activity.Activity):
+class OddScoring(activity.Activity):
     def __init__(self, handle):
         activity.Activity.__init__(self, handle)
         
@@ -33,7 +33,7 @@ class MagicMoving(activity.Activity):
         
         # Create a simple label
         label = Gtk.Label()
-        label.set_markup("<span size='x-large' weight='bold'>Soma Cube</span>")
+        label.set_markup("<span size='x-large' weight='bold'>Odd Scoring Game</span>")
         label.set_halign(Gtk.Align.CENTER)
         label.set_valign(Gtk.Align.CENTER)
         
