@@ -16,39 +16,35 @@
 
 import gi
 gi.require_version('Gtk', '3.0')
-from gi.repository import Gtk, Gdk
+from gi.repository import Gtk, Gdk, GLib
 import os
 import random
 from config import Theme
 
 class Game:
     def __init__(self):
-        # Help panel state
         self.show_help = False
         
-        # Theme state
         self.current_theme = 'LIGHT'
         
-        # Game state
-        self.N = random.randint(8, 20)  # Random grid size
-        self.current_position = self.N - 1  # Start at rightmost cell
+        self.N = 0
+        self.current_position = 0
+        self.total_steps = 0
+        self.game_over = False
+        self.is_player_turn = True
         
-        # Create main content
+        self.move_buttons = []
+        
         self._create_main_content()
         
-        # Create help overlay (initially hidden)
         self._create_help_overlay()
         
-        # Create overlay container
         self.overlay = Gtk.Overlay()
         self.overlay.add_overlay(self.help_overlay)
         self.overlay.add(self.main_box)
         
-        # Apply initial theme
-        self._apply_theme()
-        self._update_main_content_colors()
+        self.reset_game()
         
-        # Initially hide help
         self.main_box.show_all()
     
     def get_widget(self):
@@ -56,7 +52,6 @@ class Game:
         return self.overlay
     
     def _rgb_to_css(self, color):
-        """Convert RGB tuple to CSS color string"""
         if len(color) == 3:
             return f"#{color[0]:02x}{color[1]:02x}{color[2]:02x}"
         elif len(color) == 4:
@@ -64,22 +59,16 @@ class Game:
         return "#000000"
 
     def _rgb_to_gdk(self, color):
-        """Convert RGB tuple to Gdk.RGBA"""
         if len(color) >= 3:
             return Gdk.RGBA(color[0]/255, color[1]/255, color[2]/255, 1.0)
         return Gdk.RGBA(0, 0, 0, 1.0)
     
     def _apply_theme(self):
-        """Apply current theme colors to UI"""
         theme_colors = Theme.LIGHT if self.current_theme == 'LIGHT' else Theme.DARK
-        
-        # Update main background
         self.main_box.override_background_color(
             Gtk.StateFlags.NORMAL, 
             self._rgb_to_gdk(theme_colors['BG'])
         )
-        
-        # Update CSS for help overlay
         self._update_help_theme()
     
     def _update_help_theme(self):
@@ -90,19 +79,31 @@ class Game:
         help_bg_color = f"rgba({theme_colors['BG'][0]}, {theme_colors['BG'][1]}, {theme_colors['BG'][2]}, 0.85)"
         card_bg_color = self._rgb_to_css(theme_colors['CARD_BG'])
         text_color = self._rgb_to_css(theme_colors['TEXT'])
-        
+        button_bg = self._rgb_to_css(theme_colors['GRAY_LIGHT'])
+
         css_data = f"""
-        .help-overlay {{
-            background-color: {help_bg_color};
-        }}
+        .help-overlay {{ background-color: {help_bg_color}; }}
         .help-panel {{
             background-color: {card_bg_color};
             border: 3px solid {self._rgb_to_css(theme_colors['GRAY_DARK'])};
-            border-radius: 10px;
+            border-radius: 10px; 
             padding: 30px;
         }}
-        .help-content {{
-            font-size: 14px;
+        .help-title {{
+            font-size: 20px;
+            font-weight: bold;
+            color: {text_color};
+            margin-bottom: 15px;
+        }}
+        .help-content {{ 
+            font-size: 14px; 
+            color: {text_color}; 
+        }}
+        .move-button {{
+            font-size: 16px; font-weight: bold;
+            padding: 10px 20px;
+            border-radius: 5px;
+            background-color: {button_bg};
             color: {text_color};
         }}
         """.encode('utf-8')
@@ -117,17 +118,15 @@ class Game:
         )
     
     def toggle_theme(self):
-        """Toggle between light and dark theme"""
         self.current_theme = 'DARK' if self.current_theme == 'LIGHT' else 'LIGHT'
         self._apply_theme()
-        self._update_main_content_colors()
+        self._update_ui_state()
     
-    def _update_main_content_colors(self):
-        """Update main content colors based on current theme"""
+    def _update_ui_state(self):
+        """Central function to update all UI elements based on game state."""
         theme_colors = Theme.LIGHT if self.current_theme == 'LIGHT' else Theme.DARK
         text_color = self._rgb_to_css(theme_colors['TEXT'])
-        
-        # Update cell colors
+
         for i, cell in enumerate(self.cell_labels):
             if i == self.current_position:
                 cell.set_markup(f"<span size='large' weight='bold' color='{self._rgb_to_css(theme_colors['ERROR'])}'>🚶\n{i}</span>")
@@ -135,47 +134,132 @@ class Game:
                 cell.set_markup(f"<span size='large' weight='bold' color='{self._rgb_to_css(theme_colors['SUCCESS'])}'>🏁\n{i}</span>")
             else:
                 cell.set_markup(f"<span size='large' weight='bold' color='{text_color}'>{i}</span>")
-    
+
+        if self.game_over:
+            winner = "You" if self.total_steps % 2 == 0 else "Computer"
+            result_color = self._rgb_to_css(theme_colors['SUCCESS']) if winner == "You" else self._rgb_to_css(theme_colors['ERROR'])
+            self.title_label.set_markup(f"<span size='x-large' weight='bold' color='{result_color}'>{winner.upper()} WINS!</span>")
+            self.info_label.set_markup(f"<span color='{text_color}'>Game Over! Total steps: {self.total_steps}. Press Reset to play again.</span>")
+        else:
+            turn_text = "Your Turn" if self.is_player_turn else "Computer's Turn"
+            self.info_label.set_markup(f"<span color='{text_color}'>Grid Size: {self.N} | Total Steps: {self.total_steps} | <span weight='bold'>{turn_text}</span></span>")
+        
+        for button in self.move_buttons:
+            button.set_sensitive(self.is_player_turn and not self.game_over)
+
     def _create_main_content(self):
-        # Create main container
-        self.main_box = Gtk.VBox(spacing=20)
+        self.main_box = Gtk.VBox(spacing=15)
         self.main_box.set_margin_left(0)
         self.main_box.set_margin_right(0)
         self.main_box.set_margin_top(0)
         self.main_box.set_margin_bottom(0)
 
-        # Create grid container
+        self.title_label = Gtk.Label()
+        self.main_box.pack_start(self.title_label, False, False, 5)
+
+        self.info_label = Gtk.Label()
+        self.main_box.pack_start(self.info_label, False, False, 5)
+        
         grid_container = Gtk.VBox(spacing=10)
         grid_container.set_halign(Gtk.Align.CENTER)
         grid_container.set_valign(Gtk.Align.CENTER)
         
-        # Create row of cells
         cells_row = Gtk.HBox(spacing=5)
         cells_row.set_halign(Gtk.Align.CENTER)
         
         self.cell_labels = []
-        
         for i in range(self.N):
-            # Create cell
-            cell = Gtk.Label()
+            cell = Gtk.Label(label=str(i))
             cell.set_size_request(60, 60)
             cell.set_halign(Gtk.Align.CENTER)
             cell.set_valign(Gtk.Align.CENTER)
-            
-            # Add border
-            cell_frame = Gtk.Frame()
+            cell_frame = Gtk.Frame(shadow_type=Gtk.ShadowType.OUT)
             cell_frame.add(cell)
-            cell_frame.set_shadow_type(Gtk.ShadowType.OUT)
-            
             cells_row.pack_start(cell_frame, False, False, 0)
             self.cell_labels.append(cell)
         
         grid_container.pack_start(cells_row, False, False, 0)
+        self.main_box.pack_start(grid_container, True, True, 10)
+
+        button_box = Gtk.HBox(spacing=10, halign=Gtk.Align.CENTER)
+        self.move_buttons = []
+        for i in range(1, 4):
+            button = Gtk.Button(label=f"Move {i}")
+            button.get_style_context().add_class("move-button")
+            button.connect("clicked", self._player_move, i)
+            self.move_buttons.append(button)
+            button_box.pack_start(button, False, False, 0)
+        self.main_box.pack_start(button_box, False, False, 10)
+
+    def _player_move(self, widget, steps):
+        if not self.is_player_turn or self.game_over:
+            return
         
-        # Add grid to main box
-        self.main_box.pack_start(grid_container, True, True, 0)
+        self.current_position -= steps
+        self.total_steps += steps
+        self.is_player_turn = False
         
+        if self._check_game_over():
+            self._update_ui_state()
+        else:
+            self._update_ui_state()
+            GLib.timeout_add(1000, self._computer_move)
     
+    def _computer_move(self):
+        if self.game_over:
+            return False
+
+        ideal_move = self.current_position % 4
+        
+        if ideal_move == 0:
+            steps = random.randint(1, 3)
+        else:
+            steps = ideal_move
+            
+        steps = min(steps, self.current_position, 3)
+        if steps == 0: steps = 1
+
+        self.current_position -= steps
+        self.total_steps += steps
+        self.is_player_turn = True
+
+        if not self._check_game_over():
+            self._update_ui_state()
+
+        return False
+
+    def _check_game_over(self):
+        if self.current_position <= 0:
+            self.current_position = 0
+            self.game_over = True
+            self._update_ui_state()
+            return True
+        return False
+
+    def reset_game(self):
+        """Reset the game with a new random N and clear game state."""
+        self.N = random.randint(8, 20)
+        self.current_position = self.N - 1
+        self.total_steps = 0
+        self.game_over = False
+        self.is_player_turn = True
+
+        if hasattr(self, 'main_box') and self.main_box.get_parent():
+            self.overlay.remove(self.main_box)
+        
+        self._create_main_content()
+
+        self.overlay.add(self.main_box)
+        
+        self._apply_theme()
+        self._update_ui_state()
+
+        self.main_box.show_all()
+        
+        if self.show_help:
+            self.hide_help()
+            
+
     def _load_help_content(self):
         return """HOW TO PLAY:
 • Character starts at the rightmost cell
@@ -196,28 +280,23 @@ Think ahead! Every move affects the final total.
 Try to make the total number of steps even."""
     
     def _create_help_overlay(self):
-        # Create semi-transparent background
         self.help_overlay = Gtk.EventBox()
         self.help_overlay.set_halign(Gtk.Align.FILL)
         self.help_overlay.set_valign(Gtk.Align.FILL)
-        
         self.help_overlay.get_style_context().add_class("help-overlay")
         
-        # Create help panel container
-        help_container = Gtk.VBox()
-        help_container.set_halign(Gtk.Align.CENTER)
-        help_container.set_valign(Gtk.Align.CENTER)
-        help_container.set_size_request(600, 400)
-        
-        # Create help panel
         help_panel = Gtk.VBox(spacing=15)
         help_panel.get_style_context().add_class("help-panel")
-        help_panel.set_margin_left(30)
-        help_panel.set_margin_right(30)
-        help_panel.set_margin_top(30)
-        help_panel.set_margin_bottom(30)
         
-        # Help content
+        help_panel.set_halign(Gtk.Align.CENTER)
+        help_panel.set_valign(Gtk.Align.CENTER)
+        help_panel.set_size_request(600, 450)
+
+        help_title = Gtk.Label()
+        help_title.get_style_context().add_class("help-title")
+        help_title.set_markup("<b>HOW TO PLAY</b>")
+        help_panel.pack_start(help_title, False, False, 0)
+        
         help_content = Gtk.Label()
         help_text = self._load_help_content()
         help_content.set_text(help_text)
@@ -227,41 +306,30 @@ Try to make the total number of steps even."""
         help_content.set_line_wrap(True)
         help_content.set_max_width_chars(60)
         
-        # Create scrolled window for help content
         scrolled = Gtk.ScrolledWindow()
         scrolled.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
         scrolled.add(help_content)
-        scrolled.set_size_request(540, 320)
-        
         help_panel.pack_start(scrolled, True, True, 0)
         
-        help_container.pack_start(help_panel, False, False, 0)
-        self.help_overlay.add(help_container)
+        self.help_overlay.add(help_panel)
         
-        # Connect click events to close help when clicking outside
         self.help_overlay.connect("button-press-event", self._on_help_overlay_click)
-        
-        # Connect key events for ESC key
         self.help_overlay.set_can_focus(True)
         self.help_overlay.connect("key-press-event", self._on_key_press)
     
     def toggle_help(self):
-        """Toggle help panel visibility"""
         self.show_help = not self.show_help
         if self.show_help:
-            self.help_overlay.show()
+            self.help_overlay.show_all()
             self.help_overlay.grab_focus()
         else:
             self.help_overlay.hide()
     
     def hide_help(self):
-        """Hide help panel"""
         self.show_help = False
         self.help_overlay.hide()
     
     def _on_help_overlay_click(self, widget, event):
-        """Close help when clicking outside the help panel"""
-        # Get the help panel widget
         allocation = widget.get_child().get_allocation()
         if (event.x < allocation.x or 
             event.x > allocation.x + allocation.width or
@@ -271,27 +339,7 @@ Try to make the total number of steps even."""
         return False
     
     def _on_key_press(self, widget, event):
-        """Handle key press events"""
         if event.keyval == Gdk.KEY_Escape:
             self.hide_help()
             return True
-        return False
-    
-    def reset_game(self):
-        """Reset the game with a new random N"""
-        self.N = random.randint(8, 20)
-        self.current_position = self.N - 1
-
-        if hasattr(self, 'main_box'):
-            self.overlay.remove(self.main_box)
-            self.main_box.destroy()
-
-        self._create_main_content()
-
-        self.overlay.add(self.main_box)
-        
-        self._apply_theme()
-        self._update_main_content_colors()
-
-        self.main_box.show_all()
-        
+        return False       
