@@ -16,14 +16,14 @@
 
 import gi
 gi.require_version('Gtk', '3.0')
-from gi.repository import Gtk
+from gi.repository import Gtk, Gdk
 from sugar3.activity import activity
 from sugar3.graphics.toolbarbox import ToolbarBox
 from sugar3.activity.widgets import ActivityToolbarButton
 from sugar3.activity.widgets import StopButton
 from sugar3.graphics.toolbutton import ToolButton
-
-from game import Game  # Import the Game class
+import os
+from game import Game 
 
 class OddScoring(activity.Activity):
     def __init__(self, handle):
@@ -71,15 +71,3 @@ class OddScoring(activity.Activity):
     def _show_help(self, button):
         """Toggle help panel"""
         self.game.toggle_help()
-    
-    def read_file(self, file_path):
-        """Handle file reading if needed"""
-        pass
-    
-    def write_file(self, file_path):
-        """Handle file writing if needed"""
-        pass
-    
-    def close(self):
-        """Clean up when closing"""
-        self.game.quit()

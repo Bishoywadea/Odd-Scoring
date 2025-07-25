@@ -18,11 +18,16 @@ import gi
 gi.require_version('Gtk', '3.0')
 from gi.repository import Gtk, Gdk
 import os
+import random
 
 class Game:
     def __init__(self):
         # Help panel state
         self.show_help = False
+        
+        # Game state
+        self.N = random.randint(8, 20)
+        self.current_position = self.N - 1
         
         # Create main content
         self._create_main_content()
@@ -43,15 +48,64 @@ class Game:
         return self.overlay
     
     def _create_main_content(self):
-        # Create a simple label
-        label = Gtk.Label()
-        label.set_markup("<span size='x-large' weight='bold'>Odd Scoring Game</span>")
-        label.set_halign(Gtk.Align.CENTER)
-        label.set_valign(Gtk.Align.CENTER)
+        # Create main container
+        self.main_box = Gtk.VBox(spacing=20)
+        self.main_box.set_margin_left(50)
+        self.main_box.set_margin_right(50)
+        self.main_box.set_margin_top(50)
+        self.main_box.set_margin_bottom(50)
         
-        # Create a main box to hold everything
-        self.main_box = Gtk.VBox()
-        self.main_box.pack_start(label, True, True, 0)
+        # Game title
+        title = Gtk.Label()
+        title.set_markup("<span size='x-large' weight='bold'>Magic Moving Game</span>")
+        title.set_halign(Gtk.Align.CENTER)
+        self.main_box.pack_start(title, False, False, 0)
+        
+        # Create grid container
+        grid_container = Gtk.VBox(spacing=10)
+        grid_container.set_halign(Gtk.Align.CENTER)
+        grid_container.set_valign(Gtk.Align.CENTER)
+        
+        # Create row of cells
+        cells_row = Gtk.HBox(spacing=5)
+        cells_row.set_halign(Gtk.Align.CENTER)
+        
+        self.cell_labels = []
+        
+        for i in range(self.N):
+            # Create cell
+            cell = Gtk.Label()
+            cell.set_markup(f"<span size='large' weight='bold'>{i}</span>")
+            cell.set_size_request(60, 60)
+            cell.set_halign(Gtk.Align.CENTER)
+            cell.set_valign(Gtk.Align.CENTER)
+            
+            # Style the cell
+            if i == self.current_position:
+                # Character position
+                cell.set_markup(f"<span size='large' weight='bold' color='red'>🚶\n{i}</span>")
+            elif i == 0:
+                # Finish line
+                cell.set_markup(f"<span size='large' weight='bold' color='green'>🏁\n{i}</span>")
+            
+            # Add border
+            cell_frame = Gtk.Frame()
+            cell_frame.add(cell)
+            cell_frame.set_shadow_type(Gtk.ShadowType.OUT)
+            
+            cells_row.pack_start(cell_frame, False, False, 0)
+            self.cell_labels.append(cell)
+        
+        grid_container.pack_start(cells_row, False, False, 0)
+        
+        # Add grid to main box
+        self.main_box.pack_start(grid_container, True, True, 0)
+        
+        # Game info
+        info_label = Gtk.Label()
+        info_label.set_markup(f"<span size='medium'>Grid Size: {self.N} cells | Current Position: {self.current_position}</span>")
+        info_label.set_halign(Gtk.Align.CENTER)
+        self.main_box.pack_start(info_label, False, False, 0)
     
     def _load_help_content(self):
         """Load help content from help.txt file"""
@@ -62,22 +116,23 @@ class Game:
                 return f.read()
         except FileNotFoundError:
             # Default help content if file doesn't exist
-            return """HELP - Odd Scoring Game
-
-HOW TO PLAY:
-This is the Odd Scoring Game. Add your game rules here.
+            return """HOW TO PLAY:
+• Character starts at the rightmost cell
+• Take turns moving LEFT by 1, 2, or 3 spaces
+• Game ends when character reaches the finish line (left side)
 
 CONTROLS:
-• Use the toolbar buttons to navigate
-• Click the help button to show/hide this panel
-• Use the stop button to exit the activity
+• Click "1", "2", or "3" buttons to move that many spaces
+• Press ESC or click outside to close this help
 
-TIPS:
-• Add helpful tips for players
-• Explain strategy or best practices
-• Include any special features
+WINNING:
+• Count total steps taken by BOTH players
+• If total is EVEN → You win!
+• If total is ODD → Computer wins!
 
-Press ESC or click outside to close this help panel."""
+STRATEGY:
+Think ahead! Every move affects the final total.
+Try to make the total number of steps even."""
     
     def _create_help_overlay(self):
         # Create semi-transparent background
@@ -198,8 +253,3 @@ Press ESC or click outside to close this help panel."""
             self.hide_help()
             return True
         return False
-    
-    def quit(self):
-        """Clean up when closing the game"""
-        # Add any cleanup code here if needed
-        pass
