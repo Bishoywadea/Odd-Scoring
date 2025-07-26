@@ -50,18 +50,15 @@ class Game:
 
     def _create_menu_page(self):
         """Creates the main menu screen with a styled central panel."""
-        # This outer box just serves to center the panel on the screen
         centering_box = Gtk.VBox(halign=Gtk.Align.FILL, valign=Gtk.Align.FILL)
         centering_box.set_hexpand(True)
         centering_box.set_vexpand(True)
         
-        # This is our new styled panel
         menu_panel = Gtk.VBox(spacing=15)
         menu_panel.set_hexpand(True)
         menu_panel.set_vexpand(True)
         menu_panel.get_style_context().add_class("menu-panel")
         
-        # Create and add widgets INSIDE the panel
         self.menu_title = Gtk.Label()
         self.menu_title.get_style_context().add_class("menu-panel-title")
 
@@ -111,10 +108,6 @@ class Game:
         self.main_box = Gtk.VBox(spacing=15, margin=0)
 
         top_bar = Gtk.HBox(spacing=10)
-        btn_back = Gtk.Button(label="← Menu")
-        btn_back.get_style_context().add_class("secondary-button") 
-        btn_back.connect("clicked", self._on_menu_clicked)
-        top_bar.pack_start(btn_back, False, False, 0)
 
         label_vbox = Gtk.VBox(halign=Gtk.Align.CENTER, hexpand=True)
         self.title_label = Gtk.Label()
@@ -123,10 +116,6 @@ class Game:
         label_vbox.pack_start(self.info_label, False, False, 0)
         top_bar.pack_start(label_vbox, True, True, 0)
         
-        placeholder = Gtk.Label(label="← Menu")
-        placeholder.set_opacity(0.0)
-        top_bar.pack_end(placeholder, False, False, 0)
-
         self.main_box.pack_start(top_bar, False, False, 5)
         
         self.grid_container = Gtk.VBox(spacing=10, halign=Gtk.Align.CENTER, valign=Gtk.Align.CENTER)
@@ -243,18 +232,14 @@ class Game:
         bg_color = self._rgb_to_gdk(theme_colors['BG'])
         text_color_css = self._rgb_to_css(theme_colors['TEXT'])
 
-        # Apply background to the main page containers
         self.menu_page_container.override_background_color(Gtk.StateFlags.NORMAL, bg_color)
         self.main_box.override_background_color(Gtk.StateFlags.NORMAL, bg_color)
         
-        # Update menu text (which is now inside the panel)
-        self.menu_title.set_markup("<b>Odd Scoring Game</b>") # Title is now styled via CSS
+        self.menu_title.set_markup("<b>Odd Scoring Game</b>")
         self.menu_subtitle.set_markup("Choose your opponent:")
 
-        # Update CSS styles for everything
         self._update_css_theme()
 
-        # Update the current game screen if a game is active
         if self.game_mode:
             self._update_ui_state()
 
@@ -262,7 +247,6 @@ class Game:
         theme_colors = Theme.LIGHT if self.current_theme == 'LIGHT' else Theme.DARK
         css_provider = Gtk.CssProvider()
         
-        # --- THEME COLORS ---
         help_bg_rgba = f"rgba({theme_colors['BG'][0]}, {theme_colors['BG'][1]}, {theme_colors['BG'][2]}, 0.85)"
         card_bg = self._rgb_to_css(theme_colors['CARD_BG'])
         text_color = self._rgb_to_css(theme_colors['TEXT'])
