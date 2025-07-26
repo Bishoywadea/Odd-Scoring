@@ -22,7 +22,7 @@ from sugar3.graphics.toolbarbox import ToolbarBox
 from sugar3.activity.widgets import ActivityToolbarButton
 from sugar3.activity.widgets import StopButton
 from sugar3.graphics.toolbutton import ToolButton
-
+from gettext import gettext as _
 from game import Game  # Import the Game class
 
 class OddScoring(activity.Activity):
@@ -46,6 +46,12 @@ class OddScoring(activity.Activity):
         activity_button = ActivityToolbarButton(self)
         toolbar_box.toolbar.insert(activity_button, -1)
         activity_button.show()
+
+        # Main menu button
+        menu_button = ToolButton('go-home')
+        menu_button.set_tooltip(_('Main Menu'))
+        menu_button.connect("clicked", self._on_menu_clicked)
+        toolbar_box.toolbar.insert(menu_button, -1)
 
         # Reset button
         reset_button = ToolButton("view-refresh")
@@ -89,6 +95,9 @@ class OddScoring(activity.Activity):
     def _reset_game(self, button):
         """Reset the game"""
         self.game.reset_game()
+    
+    def _on_menu_clicked(self, button):
+        self.game._on_menu_clicked(button)
     
     def _show_help(self, button):
         """Toggle help panel"""

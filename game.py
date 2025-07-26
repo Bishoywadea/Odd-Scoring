@@ -49,14 +49,29 @@ class Game:
         return self.stack
 
     def _create_menu_page(self):
-        main_vbox = Gtk.VBox(spacing=20, halign=Gtk.Align.CENTER, valign=Gtk.Align.CENTER)
+        """Creates the main menu screen with a styled central panel."""
+        # This outer box just serves to center the panel on the screen
+        centering_box = Gtk.VBox(halign=Gtk.Align.FILL, valign=Gtk.Align.FILL)
+        centering_box.set_hexpand(True)
+        centering_box.set_vexpand(True)
         
+        # This is our new styled panel
+        menu_panel = Gtk.VBox(spacing=15)
+        menu_panel.set_hexpand(True)
+        menu_panel.set_vexpand(True)
+        menu_panel.get_style_context().add_class("menu-panel")
+        
+        # Create and add widgets INSIDE the panel
         self.menu_title = Gtk.Label()
-        self.menu_subtitle = Gtk.Label(label="Choose your opponent:")
-        main_vbox.pack_start(self.menu_title, False, False, 10)
-        main_vbox.pack_start(self.menu_subtitle, False, False, 0)
+        self.menu_title.get_style_context().add_class("menu-panel-title")
+
+        self.menu_subtitle = Gtk.Label()
+        self.menu_subtitle.get_style_context().add_class("menu-panel-subtitle")
         
-        button_box = Gtk.VBox(spacing=15, margin_top=0)
+        menu_panel.pack_start(self.menu_title, False, False, 0)
+        menu_panel.pack_start(self.menu_subtitle, False, False, 0)
+        
+        button_box = Gtk.VBox(spacing=15, margin_top=20)
         
         btn_bot = Gtk.Button(label="Play vs. Computer")
         btn_bot.get_style_context().add_class("menu-button")
@@ -68,10 +83,13 @@ class Game:
         btn_player.connect("clicked", self._start_game, 'VS_PLAYER')
         button_box.pack_start(btn_player, False, False, 0)
         
-        main_vbox.pack_start(button_box, False, False, 0)
+        menu_panel.pack_start(button_box, False, False, 0)
         
-        main_vbox.show_all()
-        return main_vbox
+        centering_box.pack_start(menu_panel, False, False, 0)
+        
+        centering_box.show_all()
+        self.menu_page_container = centering_box
+        return centering_box
         
     def _start_game(self, widget, mode):
         self.game_mode = mode
@@ -94,8 +112,8 @@ class Game:
 
         top_bar = Gtk.HBox(spacing=10)
         btn_back = Gtk.Button(label="← Menu")
-        btn_back.get_style_context().add_class("secondary-button") # <-- Style for back button
-        btn_back.connect("clicked", lambda w: self.stack.set_visible_child_name("menu_page"))
+        btn_back.get_style_context().add_class("secondary-button") 
+        btn_back.connect("clicked", self._on_menu_clicked)
         top_bar.pack_start(btn_back, False, False, 0)
 
         label_vbox = Gtk.VBox(halign=Gtk.Align.CENTER, hexpand=True)
@@ -123,6 +141,9 @@ class Game:
             self.move_buttons.append(button)
             button_box.pack_start(button, False, False, 0)
         self.main_box.pack_start(button_box, False, False, 10)
+
+    def _on_menu_clicked(self, button):
+        self.stack.set_visible_child_name("menu_page")
     
     def _player_move(self, widget, steps):
         if self.game_over: return
@@ -222,14 +243,18 @@ class Game:
         bg_color = self._rgb_to_gdk(theme_colors['BG'])
         text_color_css = self._rgb_to_css(theme_colors['TEXT'])
 
-        self.menu_page.override_background_color(Gtk.StateFlags.NORMAL, bg_color)
+        # Apply background to the main page containers
+        self.menu_page_container.override_background_color(Gtk.StateFlags.NORMAL, bg_color)
         self.main_box.override_background_color(Gtk.StateFlags.NORMAL, bg_color)
         
-        self.menu_title.set_markup(f"<span size='xx-large' weight='bold' color='{text_color_css}'>Odd Scoring Game</span>")
-        self.menu_subtitle.set_markup(f"<span color='{text_color_css}'>Choose your opponent:</span>")
+        # Update menu text (which is now inside the panel)
+        self.menu_title.set_markup("<b>Odd Scoring Game</b>") # Title is now styled via CSS
+        self.menu_subtitle.set_markup("Choose your opponent:")
 
+        # Update CSS styles for everything
         self._update_css_theme()
 
+        # Update the current game screen if a game is active
         if self.game_mode:
             self._update_ui_state()
 
@@ -237,28 +262,55 @@ class Game:
         theme_colors = Theme.LIGHT if self.current_theme == 'LIGHT' else Theme.DARK
         css_provider = Gtk.CssProvider()
         
-        help_bg = f"rgba({theme_colors['BG'][0]}, {theme_colors['BG'][1]}, {theme_colors['BG'][2]}, 0.85)"
+        # --- THEME COLORS ---
+        help_bg_rgba = f"rgba({theme_colors['BG'][0]}, {theme_colors['BG'][1]}, {theme_colors['BG'][2]}, 0.85)"
         card_bg = self._rgb_to_css(theme_colors['CARD_BG'])
         text_color = self._rgb_to_css(theme_colors['TEXT'])
         text_light_color = self._rgb_to_css(Theme.LIGHT['TEXT'])
         btn_primary_bg = self._rgb_to_css(theme_colors['SUCCESS'])
         btn_secondary_bg = self._rgb_to_css(theme_colors['GRAY_DARK'])
         btn_move_bg = self._rgb_to_css(theme_colors['GRAY_LIGHT'])
-        
+        border_color = self._rgb_to_css(theme_colors['GRAY_DARK'])
+
         css_data = f"""
+        /* The main card on the menu screen */
+        .menu-panel {{
+            background-color: {card_bg};
+            padding: 40px;
+            border-radius: 12px;
+            border: 1px solid {border_color};
+            min-width: 350px;
+        }}
+        .menu-panel-title {{
+            font-size: 24px;
+            font-weight: bold;
+            color: {text_color};
+            margin-bottom: 5px;
+        }}
+        .menu-panel-subtitle {{
+            font-size: 15px;
+            color: {text_color};
+            margin-bottom: 20px;
+            opacity: 0.8;
+        }}
+
         /* General button styling */
         button {{
-            border-radius: 5px;
+            border-radius: 8px; /* Slightly more rounded */
             border: none;
             font-weight: bold;
         }}
 
         /* Menu Buttons (Play vs Bot, etc.) */
         .menu-button {{
-            font-size: 18px;
-            padding: 15px 30px;
+            font-size: 16px;
+            padding: 15px;
             background-color: {btn_primary_bg};
             color: {text_light_color};
+            transition: all 0.2s;
+        }}
+        .menu-button:hover {{
+            opacity: 0.9;
         }}
 
         /* Move Buttons (1, 2, 3) */
@@ -278,10 +330,10 @@ class Game:
         }}
         
         /* Help Panel */
-        .help-overlay {{ background-color: {help_bg}; }}
+        .help-overlay {{ background-color: {help_bg_rgba}; }}
         .help-panel {{
             background-color: {card_bg};
-            border: 3px solid {btn_secondary_bg}; /* Re-use color */
+            border: 2px solid {border_color};
             border-radius: 10px; 
             padding: 30px;
         }}
