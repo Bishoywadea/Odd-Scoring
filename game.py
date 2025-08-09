@@ -1226,12 +1226,84 @@ class Game:
         
         self.stack.set_visible_child_name("game_page")
         
-        self.reset_game()
+        self._create_network_game_grid()
         
         if self.is_host:
             self._show_game_start_message("You are Player 1. You start!")
         else:
             self._show_game_start_message("You are Player 2. Waiting for Player 1...")
+
+    def _create_network_game_grid(self):
+        """Create game grid specifically for network games with synchronized N value"""
+        print(f"DEBUG: _create_network_game_grid with N={self.N}")
+        
+        # Clear existing grid
+        if hasattr(self, 'grid_container'):
+            for child in self.grid_container.get_children():
+                child.destroy()
+        
+        # Calculate grid layout based on screen width (same logic as reset_game)
+        cell_width = 60
+        cell_spacing = 5
+        margin = 40
+        available_width = self.screen_width - (2 * margin)
+        
+        cells_per_row = max(1, available_width // (cell_width + cell_spacing))
+        
+        if self.N <= cells_per_row:
+            rows = 1
+            cells_in_rows = [self.N]
+        elif self.N <= cells_per_row * 2:
+            rows = 2
+            cells_first_row = (self.N + 1) // 2
+            cells_in_rows = [cells_first_row, self.N - cells_first_row]
+        else:
+            rows = 3
+            cells_per_full_row = self.N // 3
+            extra_cells = self.N % 3
+            cells_in_rows = []
+            for i in range(3):
+                cells_in_this_row = cells_per_full_row + (1 if i < extra_cells else 0)
+                cells_in_rows.append(cells_in_this_row)
+        
+        # Create the grid
+        self.cell_contents = []
+        cell_index = self.N - 1
+        
+        grid_box = Gtk.VBox(spacing=5, halign=Gtk.Align.CENTER)
+        
+        for row in range(rows):
+            row_box = Gtk.HBox(spacing=5, halign=Gtk.Align.CENTER)
+            
+            for col in range(cells_in_rows[row]):
+                # Create cell content
+                cell_content, image_container, number_label = self._create_cell_content(cell_index)
+                
+                cell_frame = Gtk.Frame(shadow_type=Gtk.ShadowType.OUT)
+                cell_frame.set_size_request(cell_width, 60)
+                cell_frame.add(cell_content)
+                
+                row_box.pack_start(cell_frame, False, False, 0)
+                
+                self.cell_contents.insert(0, {
+                    'container': cell_content,
+                    'image': image_container,
+                    'label': number_label,
+                    'index': cell_index
+                })
+                
+                cell_index -= 1
+        
+            grid_box.pack_start(row_box, False, False, 0)
+        
+        if hasattr(self, 'grid_container'):
+            self.grid_container.pack_start(grid_box, False, False, 0)
+            self.grid_container.show_all()
+        
+        self._apply_theme()
+        self._update_ui_state()
+        
+        print(f"DEBUG: Network game grid created successfully with {len(self.cell_contents)} cells")
 
     def _show_game_start_message(self, message):
         """Show a temporary message when game starts"""

@@ -189,9 +189,136 @@ class OddScoring(activity.Activity):
             print(f"ERROR: Failed to toggle help: {e}")
     
     def read_file(self, file_path):
-        """Handle file reading if needed"""
-        pass
-    
+        """Load game state from Journal"""
+        print(f"DEBUG: read_file called with path: {file_path}")
+        
+        self._read_file_called = True
+        
+        if not os.path.exists(file_path):
+            print(f"ERROR: File does not exist: {file_path}")
+            GLib.timeout_add(100, lambda: self.game.show_menu())
+            return
+        
+        try:
+            with open(file_path, 'r') as f:
+                content = f.read()
+                print(f"DEBUG: Read {len(content)} characters from file")
+                
+                try:
+                    data = json.loads(content)
+                    print(f"DEBUG: Successfully parsed JSON")
+                except json.JSONDecodeError as e:
+                    print(f"ERROR: JSON parsing failed: {e}")
+                    GLib.timeout_add(100, lambda: self.game.show_menu())
+                    return
+            
+            game_state = data.get('game_state', {})
+            if game_state:
+                print(f"DEBUG: Game state found with keys: {list(game_state.keys())}")
+                
+                if hasattr(self.game, 'load_state'):
+                    print("DEBUG: Loading game state")
+                    if self.game.load_state(game_state):
+                        self._loaded_from_journal = True
+                        print("DEBUG: Game state loaded successfully")
+                    else:
+                        print("ERROR: game.load_state() returned False")
+                        GLib.timeout_add(100, lambda: self.game.show_menu())
+                else:
+                    print("ERROR: game object doesn't have load_state method")
+                    GLib.timeout_add(100, lambda: self.game.show_menu())
+            else:
+                print("WARNING: No game_state in loaded data")
+                GLib.timeout_add(100, lambda: self.game.show_menu())
+                
+        except Exception as e:
+            print(f"ERROR: Unexpected error reading file: {e}")
+            GLib.timeout_add(100, lambda: self.game.show_menu())
+
     def write_file(self, file_path):
-        """Handle file writing if needed"""
-        pass
+        """Save game state to Journal"""
+        print(f"DEBUG: write_file called with path: {file_path}")
+        
+        try:
+            data = {
+                'metadata': {
+                    'activity': 'org.sugarlabs.OddScoring',
+                    'activity_version': 1,
+                    'mime_type': 'application/x-odd-scoring-game',
+                    'timestamp': time.time()
+                },
+                'game_state': {}
+            }
+            
+            if hasattr(self.game, 'save_state'):
+                print("DEBUG: Calling game.save_state()")
+                game_state = self.game.save_state()
+                print(f"DEBUG: Got game state with keys: {list(game_state.keys()) if game_state else 'None'}")
+                data['game_state'] = game_state
+            else:
+                print("ERROR: game object doesn't have save_state method")
+            
+            json_string = json.dumps(data, indent=2)
+            print(f"DEBUG: JSON serialization successful, length: {len(json_string)}")
+            
+            with open(file_path, 'w') as f:
+                f.write(json_string)
+                f.flush()
+                os.fsync(f.fileno())
+                
+            print(f"DEBUG: File written successfully")
+                
+        except Exception as e:
+            print(f"ERROR: Writing file failed: {e}")
+
+    def can_close(self):
+        """Called when the activity is about to close"""
+        return True
+
+    def close(self):
+        """Clean shutdown"""
+        super(OddScoring, self).close()
+    
+    def __joined_cb(self, collab):
+        """Called when we join a shared activity"""
+        print("DEBUG: Joined shared activity")
+        if self.game:
+            self.game.on_collaboration_joined()
+
+    def __buddy_joined_cb(self, collab, buddy):
+        """Called when another user joins"""
+        print(f"DEBUG: Buddy joined: {buddy.props.nick}")
+        if self.game:
+            self.game.on_buddy_joined(buddy)
+
+    def __buddy_left_cb(self, collab, buddy):
+        """Called when another user leaves"""
+        print(f"DEBUG: Buddy left: {buddy.props.nick}")
+        if self.game:
+            self.game.on_buddy_left(buddy)
+
+    def __message_cb(self, collab, buddy, message):
+        """Called when we receive a message"""
+        print(f"DEBUG: __message_cb called")
+        print(f"DEBUG: From buddy: {buddy.props.nick}")
+        print(f"DEBUG: Message content: {message}")
+        
+        if self.game:
+            self.game.on_message_received(buddy, message)
+        else:
+            print("ERROR: No game object to handle message")
+    
+    def get_data(self):
+        """Called by CollabWrapper when someone joins to get current state"""
+        print("DEBUG: get_data called")
+        if hasattr(self.game, 'get_game_state_for_sync'):
+            data = self.game.get_game_state_for_sync()
+            print(f"DEBUG: Returning game state: {data}")
+            return data
+        return {}
+
+    def set_data(self, data):
+        """Called by CollabWrapper when joining to receive current state"""
+        print(f"DEBUG: set_data called with: {data}")
+        if data and hasattr(self.game, 'set_game_state_from_sync'):
+            self.game.set_game_state_from_sync(data)
