@@ -231,6 +231,7 @@ class Game:
 
     def show_lobby(self):
         """Show the network game lobby"""
+        self._reset_for_network_game()
         try:
             if not hasattr(self, 'lobby_page_added'):
                 lobby_main_container = Gtk.VBox(halign=Gtk.Align.FILL, valign=Gtk.Align.FILL)
@@ -273,6 +274,26 @@ class Game:
             print(f"ERROR: Failed to show lobby: {e}")
             import traceback
             traceback.print_exc()
+
+    def _reset_for_network_game(self):
+        """Reset game state when preparing for network multiplayer"""
+        
+        self.N = 0
+        self.current_position = 0
+        self.total_steps = 0
+        self.game_over = False
+        self.current_player = 1
+        
+        if hasattr(self, 'cell_contents'):
+            self.cell_contents = []
+        
+        if hasattr(self, 'grid_container'):
+            for child in self.grid_container.get_children():
+                child.destroy()
+        
+        self.game_started = False
+        self.opponent_buddy = None
+        self.network_players = []
 
     def _leave_lobby(self, widget):
         """Leave the lobby and go back to menu"""
@@ -577,7 +598,9 @@ class Game:
             button.set_sensitive(is_human_turn and not self.game_over and can_move)
     
     def reset_game(self):
-        self.N = random.randint(8, 20)
+        """Reset the game for all modes"""
+        if self.game_mode != GameMode.NETWORK_MULTIPLAYER:
+            self.N = random.randint(8, 20)
         self.current_position = self.N - 1
         self.total_steps = 0
         self.game_over = False
@@ -586,9 +609,16 @@ class Game:
         if hasattr(self, 'grid_container'):
             for child in self.grid_container.get_children():
                 child.destroy()
+        self._create_game_grid()
+        
+    def _create_game_grid(self):
+        """Create game grid for all game modes"""
+        if not hasattr(self, 'grid_container'):
+            print("ERROR: grid_container not found!")
+            return
         
         cell_width = 60
-        cell_spacing = 5 
+        cell_spacing = 5
         margin = 40
         available_width = self.screen_width - (2 * margin)
         
@@ -610,7 +640,7 @@ class Game:
                 cells_in_this_row = cells_per_full_row + (1 if i < extra_cells else 0)
                 cells_in_rows.append(cells_in_this_row)
         
-        self.cell_labels = []
+        self.cell_contents = []
         cell_index = self.N - 1
         
         grid_box = Gtk.VBox(spacing=5, halign=Gtk.Align.CENTER)
@@ -637,9 +667,8 @@ class Game:
         
             grid_box.pack_start(row_box, False, False, 0)
         
-        if hasattr(self, 'grid_container'):
-            self.grid_container.pack_start(grid_box, False, False, 0)
-            self.grid_container.show_all()
+        self.grid_container.pack_start(grid_box, False, False, 0)
+        self.grid_container.show_all()
         
         self._apply_theme()
         self._update_ui_state()
@@ -1144,7 +1173,7 @@ class Game:
         
         self.stack.set_visible_child_name("game_page")
         
-        self._create_network_game_grid()
+        self._create_game_grid()
         
         if self.is_host:
             self._show_game_start_message("You are Player 1. You start!")
