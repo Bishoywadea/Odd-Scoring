@@ -32,7 +32,6 @@ class Game:
     def __init__(self):
         self.current_theme = 'LIGHT'
         self.game_mode = None
-        self.show_help = False
 
         self.N = 0
         self.current_position = 0
@@ -166,11 +165,9 @@ class Game:
     def _create_game_page(self):
         try:
             self._create_main_content()
-            self._create_help_overlay()
             self._create_lobby_page()
             self.overlay = Gtk.Overlay()
             self.overlay.add(self.main_box)
-            self.overlay.add_overlay(self.help_overlay)
             self.overlay.show()
             return self.overlay
         except Exception as e:
@@ -672,8 +669,6 @@ class Game:
         
         self._apply_theme()
         self._update_ui_state()
-        if self.show_help: 
-            self.hide_help()
             
     def _rgb_to_css(self, color):
         if len(color) == 3: return f"#{color[0]:02x}{color[1]:02x}{color[2]:02x}"
@@ -773,27 +768,6 @@ class Game:
             background-color: {btn_secondary_bg};
             color: {text_light_color};
         }}
-        
-        /* Help Panel */
-        .help-overlay {{ 
-            background-color: {help_bg_rgba}; 
-        }}
-        .help-panel {{
-            background-color: {card_bg};
-            border: 2px solid {border_color};
-            border-radius: 10px; 
-            padding: 30px;
-        }}
-        .help-title {{ 
-            font-size: 20px; 
-            font-weight: bold; 
-            color: {text_color}; 
-            margin-bottom: 15px; 
-        }}
-        .help-content {{ 
-            font-size: 14px; 
-            color: {text_color}; 
-        }}
         """.encode('utf-8')
         
         css_provider.load_from_data(css_data)
@@ -802,102 +776,6 @@ class Game:
     def toggle_theme(self):
         self.current_theme = 'DARK' if self.current_theme == 'LIGHT' else 'LIGHT'
         self._apply_theme()
-
-    def _load_help_content(self):
-        return """HOW TO PLAY:
-    • Character starts at the highest numbered cell
-    • Take turns moving toward cell 0 by 1, 2, or 3 spaces
-    • Game ends when character reaches the finish line (cell 0)
-
-    WINNING:
-    • If total steps taken is EVEN → You win!
-    • If total is ODD → The opponent wins!
-
-    GAME LAYOUT:
-    • Numbers represent positions from highest to 0
-    • Character moves from higher numbers toward 0
-    • Multi-row layout preserves number sequence automatically
-
-    CONTROLS:
-    • Click "1", "2", or "3" buttons to move that many spaces
-    • Use toolbar buttons to restart, change theme, or return to menu"""
-    
-    def _create_help_overlay(self):
-        self.help_overlay = Gtk.EventBox(halign=Gtk.Align.FILL, valign=Gtk.Align.FILL)
-        self.help_overlay.get_style_context().add_class("help-overlay")
-        
-        centering_box = Gtk.VBox(halign=Gtk.Align.CENTER, valign=Gtk.Align.CENTER)
-        centering_box.set_hexpand(True)
-        centering_box.set_vexpand(True)
-        
-        help_panel = Gtk.VBox(spacing=15)
-        
-        help_width = min(600, self.screen_width - 100)
-        help_height = min(480, self.screen_height - 100)
-        help_panel.set_size_request(help_width, help_height)
-        
-        help_panel.get_style_context().add_class("help-panel")
-        
-        help_title = Gtk.Label()
-        help_title.get_style_context().add_class("help-title")
-        help_title.set_markup("<b>HOW TO PLAY</b>")
-        help_panel.pack_start(help_title, False, False, 0)
-        
-        help_content = Gtk.Label()
-        help_content.set_text(self._load_help_content())
-        help_content.set_halign(Gtk.Align.START)
-        help_content.set_valign(Gtk.Align.START)
-        help_content.set_line_wrap(True)
-        help_content.set_max_width_chars(60)
-        help_content.get_style_context().add_class("help-content")
-        
-        scrolled = Gtk.ScrolledWindow()
-        scrolled.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
-        scrolled.add(help_content)
-        help_panel.pack_start(scrolled, True, True, 0)
-        
-        centering_box.pack_start(help_panel, False, False, 0)
-        self.help_overlay.add(centering_box)
-        self.help_overlay.connect("button-press-event", self._on_help_overlay_click)
-        self.help_overlay.set_can_focus(True)
-        self.help_overlay.connect("key-press-event", self._on_key_press)
-    
-    def toggle_help(self):
-        self.show_help = not self.show_help
-        if self.show_help:
-            self.help_overlay.show_all()
-            self.help_overlay.grab_focus()
-        else:
-            self.help_overlay.hide()
-    
-    def hide_help(self):
-        self.show_help = False
-        self.help_overlay.hide()
-    
-    def _on_help_overlay_click(self, widget, event):
-        centering_box = widget.get_child()
-        if not centering_box:
-            return False
-        help_panel = centering_box.get_children()[0] if centering_box.get_children() else None
-        if not help_panel:
-            return False
-        
-        allocation = help_panel.get_allocation()
-        parent_allocation = centering_box.get_allocation()
-        
-        panel_x = parent_allocation.x + allocation.x
-        panel_y = parent_allocation.y + allocation.y
-        
-        if (event.x < panel_x or event.x > panel_x + allocation.width or
-            event.y < panel_y or event.y > panel_y + allocation.height):
-            self.hide_help()
-        return False
-    
-    def _on_key_press(self, widget, event):
-        if event.keyval == Gdk.KEY_Escape:
-            self.hide_help()
-            return True
-        return False
 
     def set_collab_wrapper(self, collab):
         """Set the collaboration wrapper reference"""
@@ -1321,7 +1199,6 @@ class Game:
         try:
             state['game_mode'] = self.game_mode.value if self.game_mode else 1
             state['current_theme'] = self.current_theme
-            state['show_help'] = self.show_help
             state['N'] = self.N
             state['current_position'] = self.current_position
             state['total_steps'] = self.total_steps
@@ -1360,7 +1237,6 @@ class Game:
                 self.game_mode = GameMode.VS_BOT
             
             self.current_theme = state.get('current_theme', 'LIGHT')
-            self.show_help = state.get('show_help', False)
             
             self.N = state.get('N', 0)
             self.current_position = state.get('current_position', 0)

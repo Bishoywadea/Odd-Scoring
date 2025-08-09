@@ -26,6 +26,8 @@ from gettext import gettext as _
 import os
 import json
 import time
+from sugar3.graphics.palette import Palette
+from sugar3.graphics import style
 from collabwrapper import CollabWrapper
 from game import Game
 
@@ -127,11 +129,11 @@ class OddScoring(activity.Activity):
         theme_button.show()
         
         # Help button
-        help_button = ToolButton("toolbar-help")
-        help_button.set_tooltip("Show/Hide Help")
-        help_button.connect("clicked", self._show_help)
-        toolbar_box.toolbar.insert(help_button, -1)
-        help_button.show()
+        self.help_button = ToolButton("toolbar-help")
+        self.help_button.set_tooltip("Help")
+        self._setup_help_palette()
+        toolbar_box.toolbar.insert(self.help_button, -1)
+        self.help_button.show()
         
         # Separator
         separator = Gtk.SeparatorToolItem()
@@ -146,6 +148,112 @@ class OddScoring(activity.Activity):
         
         self.set_toolbar_box(toolbar_box)
         toolbar_box.show_all()
+    
+    def _setup_help_palette(self):
+        """Create a Sugar-style help palette"""
+        palette = Palette('Help')
+        palette.props.primary_text = 'Odd Scoring Game Help'
+        palette.props.secondary_text = 'Learn how to play the Odd Scoring puzzle game'
+        
+        help_content = Gtk.VBox(spacing=style.DEFAULT_SPACING)
+        help_content.set_border_width(style.DEFAULT_SPACING)
+        
+        desc_label = Gtk.Label()
+        desc_label.set_markup('<b>About the Game:</b>')
+        desc_label.set_alignment(0, 0.5)
+        help_content.pack_start(desc_label, False, False, 0)
+        
+        desc_text = Gtk.Label()
+        desc_text.set_text('The Odd Scoring game challenges you to reach position 0\n'
+                        'by making strategic moves. Victory depends on the total\n'
+                        'number of steps taken being even or odd!')
+        desc_text.set_alignment(0, 0.5)
+        desc_text.set_line_wrap(True)
+        desc_text.set_max_width_chars(style.MENU_WIDTH_CHARS)
+        help_content.pack_start(desc_text, False, False, 0)
+        
+        play_label = Gtk.Label()
+        play_label.set_markup('<b>How to Play:</b>')
+        play_label.set_alignment(0, 0.5)
+        help_content.pack_start(play_label, False, False, style.DEFAULT_SPACING)
+        
+        rules_grid = Gtk.Grid()
+        rules_grid.set_column_spacing(style.DEFAULT_SPACING)
+        rules_grid.set_row_spacing(2)
+        
+        rules = [
+            ('Start:', 'Character begins at the highest numbered cell'),
+            ('Moves:', 'Take turns moving 1, 2, or 3 spaces toward 0'),
+            ('Goal:', 'Reach cell 0 (the finish line)'),
+            ('Winner:', 'Player who benefits from total steps being even/odd'),
+        ]
+        
+        for i, (rule, description) in enumerate(rules):
+            rule_label = Gtk.Label()
+            rule_label.set_text(rule)
+            rule_label.set_alignment(0, 0.5)
+            rule_label.set_markup(f'<b>{rule}</b>')
+            
+            desc_label = Gtk.Label()
+            desc_label.set_text(description)
+            desc_label.set_alignment(0, 0.5)
+            desc_label.set_line_wrap(True)
+            desc_label.set_max_width_chars(35)
+            
+            rules_grid.attach(rule_label, 0, i, 1, 1)
+            rules_grid.attach(desc_label, 1, i, 1, 1)
+        
+        help_content.pack_start(rules_grid, False, False, 0)
+        
+        winning_label = Gtk.Label()
+        winning_label.set_markup('<b>Winning Conditions:</b>')
+        winning_label.set_alignment(0, 0.5)
+        help_content.pack_start(winning_label, False, False, style.DEFAULT_SPACING)
+        
+        winning_text = Gtk.Label()
+        winning_text.set_text('• If total steps is EVEN → You win!\n'
+                            '• If total steps is ODD → Opponent wins!')
+        winning_text.set_alignment(0, 0.5)
+        winning_text.set_line_wrap(True)
+        winning_text.set_max_width_chars(style.MENU_WIDTH_CHARS)
+        help_content.pack_start(winning_text, False, False, 0)
+        
+        controls_label = Gtk.Label()
+        controls_label.set_markup('<b>Controls:</b>')
+        controls_label.set_alignment(0, 0.5)
+        help_content.pack_start(controls_label, False, False, style.DEFAULT_SPACING)
+        
+        controls_grid = Gtk.Grid()
+        controls_grid.set_column_spacing(style.DEFAULT_SPACING)
+        controls_grid.set_row_spacing(2)
+        
+        controls = [
+            ('Move 1:', 'Click "Move 1" button'),
+            ('Move 2:', 'Click "Move 2" button'),
+            ('Move 3:', 'Click "Move 3" button'),
+            ('Reset:', 'Click reset button in toolbar'),
+            ('Theme:', 'Click theme button to change appearance'),
+        ]
+        
+        for i, (action, method) in enumerate(controls):
+            action_label = Gtk.Label()
+            action_label.set_text(action)
+            action_label.set_alignment(0, 0.5)
+            action_label.set_markup(f'<tt>{action}</tt>')
+            
+            method_label = Gtk.Label()
+            method_label.set_text(method)
+            method_label.set_alignment(0, 0.5)
+            
+            controls_grid.attach(action_label, 0, i, 1, 1)
+            controls_grid.attach(method_label, 1, i, 1, 1)
+        
+        help_content.pack_start(controls_grid, False, False, 0)
+        
+        palette.set_content(help_content)
+        help_content.show_all()
+        
+        self.help_button.set_palette(palette)
     
     def _toggle_theme(self, button):
         """Toggle theme"""
@@ -166,13 +274,6 @@ class OddScoring(activity.Activity):
             self.game.show_menu()
         except Exception as e:
             print(f"ERROR: Failed to show menu: {e}")
-    
-    def _show_help(self, button):
-        """Toggle help panel"""
-        try:
-            self.game.toggle_help()
-        except Exception as e:
-            print(f"ERROR: Failed to toggle help: {e}")
     
     def read_file(self, file_path):
         """Load game state from Journal"""
