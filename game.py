@@ -16,7 +16,7 @@
 
 import gi
 gi.require_version('Gtk', '3.0')
-from gi.repository import Gtk, Gdk, GLib
+from gi.repository import Gtk, Gdk, GLib, GdkPixbuf
 import os
 import random
 from config import Theme
@@ -36,6 +36,8 @@ class Game:
         self.screen_width = self.screen.get_width()
         self.screen_height = self.screen.get_height()
 
+        self._load_images()
+
         self.stack = Gtk.Stack()
         self.stack.set_transition_type(Gtk.StackTransitionType.SLIDE_LEFT_RIGHT)
         self.stack.set_transition_duration(500)
@@ -50,6 +52,43 @@ class Game:
         
     def get_widget(self):
         return self.stack
+    
+    def _load_images(self):
+        """Load PNG images for player and finish line"""
+        self.player_pixbuf = None
+        self.finish_pixbuf = None
+        
+        try:
+            player_path = os.path.join(os.path.dirname(__file__), 'running.png')
+            if os.path.exists(player_path):
+                self.player_pixbuf = GdkPixbuf.Pixbuf.new_from_file_at_scale(
+                    player_path, 32, 32, True
+                )
+        except Exception as e:
+            print(f"Could not load player image: {e}")
+        
+        try:
+            finish_path = os.path.join(os.path.dirname(__file__), 'finish-line.png')
+            if os.path.exists(finish_path):
+                self.finish_pixbuf = GdkPixbuf.Pixbuf.new_from_file_at_scale(
+                    finish_path, 32, 32, True
+                )
+        except Exception as e:
+            print(f"Could not load finish image: {e}")
+    
+    def _create_cell_content(self, cell_index):
+        """Create the content for a cell (image + number)"""
+        vbox = Gtk.VBox(spacing=2, halign=Gtk.Align.CENTER, valign=Gtk.Align.CENTER)
+        
+        image_container = Gtk.VBox(halign=Gtk.Align.CENTER, valign=Gtk.Align.CENTER)
+        image_container.set_size_request(32, 32)
+        
+        number_label = Gtk.Label()
+        
+        vbox.pack_start(image_container, False, False, 0)
+        vbox.pack_start(number_label, False, False, 0)
+        
+        return vbox, image_container, number_label
 
     def _create_menu_page(self):
         """Creates the main menu screen with a styled central panel."""
@@ -193,13 +232,44 @@ class Game:
     def _update_ui_state(self):
         theme_colors = Theme.LIGHT if self.current_theme == 'LIGHT' else Theme.DARK
         text_color = self._rgb_to_css(theme_colors['TEXT'])
-        for i, cell in enumerate(self.cell_labels):
-            if i == self.current_position:
-                cell.set_markup(f"<span size='large' weight='bold' color='{self._rgb_to_css(theme_colors['ERROR'])}'>🚶\n{i}</span>")
-            elif i == 0:
-                cell.set_markup(f"<span size='large' weight='bold' color='{self._rgb_to_css(theme_colors['SUCCESS'])}'>🏁\n{i}</span>")
+        error_color = self._rgb_to_css(theme_colors['ERROR'])
+        success_color = self._rgb_to_css(theme_colors['SUCCESS'])
+        
+        for cell_data in self.cell_contents:
+            cell_index = cell_data['index']
+            image_container = cell_data['image']
+            number_label = cell_data['label']
+            
+            for child in image_container.get_children():
+                child.destroy()
+            
+            if cell_index == self.current_position:
+                if self.player_pixbuf:
+                    image = Gtk.Image.new_from_pixbuf(self.player_pixbuf)
+                    image_container.pack_start(image, True, True, 0)
+                else:
+                    fallback_label = Gtk.Label()
+                    fallback_label.set_markup(f"<span color='{error_color}'>P</span>")
+                    image_container.pack_start(fallback_label, True, True, 0)
+                
+                number_label.set_markup(f"<span size='small' weight='bold' color='{error_color}'>{cell_index}</span>")
+                
+            elif cell_index == 0:
+                if self.finish_pixbuf:
+                    image = Gtk.Image.new_from_pixbuf(self.finish_pixbuf)
+                    image_container.pack_start(image, True, True, 0)
+                else:
+                    fallback_label = Gtk.Label()
+                    fallback_label.set_markup(f"<span color='{success_color}'>F</span>")
+                    image_container.pack_start(fallback_label, True, True, 0)
+                
+                number_label.set_markup(f"<span size='small' weight='bold' color='{success_color}'>{cell_index}</span>")
+                
             else:
-                cell.set_markup(f"<span size='large' weight='bold' color='{text_color}'>{i}</span>")
+                number_label.set_markup(f"<span size='small' weight='bold' color='{text_color}'>{cell_index}</span>")
+        
+        self.grid_container.show_all()
+        
         if self.game_over:
             is_total_even = self.total_steps % 2 == 0
             winner = ("You" if is_total_even else "Computer") if self.game_mode == 'VS_BOT' else ("Player 1" if is_total_even else "Player 2")
@@ -211,6 +281,7 @@ class Game:
             mode_text = "vs. Computer" if self.game_mode == 'VS_BOT' else "Player vs. Player"
             self.title_label.set_markup(f"<span size='x-large' weight='bold' color='{text_color}'>{mode_text}</span>")
             self.info_label.set_markup(f"<span color='{text_color}'>Grid: {self.N} | Steps: {self.total_steps} | <span weight='bold'>{turn_text}</span></span>")
+        
         is_human_turn = (self.game_mode == 'VS_PLAYER') or (self.game_mode == 'VS_BOT' and self.current_player == 1)
         for i, button in enumerate(self.move_buttons):
             can_move = self.current_position - (i + 1) >= 0
@@ -258,14 +329,20 @@ class Game:
             row_box = Gtk.HBox(spacing=5, halign=Gtk.Align.CENTER)
             
             for col in range(cells_in_rows[row]):
-                cell = Gtk.Label()
-                cell.set_size_request(cell_width, 60)
-                cell.set_halign(Gtk.Align.CENTER)
-                cell.set_valign(Gtk.Align.CENTER)
+                cell_content, image_container, number_label = self._create_cell_content(cell_index)
                 cell_frame = Gtk.Frame(shadow_type=Gtk.ShadowType.OUT)
-                cell_frame.add(cell)
+                cell_frame.set_size_request(cell_width, 60)
+                cell_frame.add(cell_content)
+                
                 row_box.pack_start(cell_frame, False, False, 0)
-                self.cell_labels.insert(0, cell)
+                
+                self.cell_contents.insert(0, {
+                    'container': cell_content,
+                    'image': image_container,
+                    'label': number_label,
+                    'index': cell_index
+                })
+                
                 cell_index -= 1
         
             grid_box.pack_start(row_box, False, False, 0)
