@@ -32,6 +32,9 @@ class Game:
         self.total_steps = 0
         self.game_over = False
         self.current_player = 1
+        self.screen = Gdk.Screen.get_default()
+        self.screen_width = self.screen.get_width()
+        self.screen_height = self.screen.get_height()
 
         self.stack = Gtk.Stack()
         self.stack.set_transition_type(Gtk.StackTransitionType.SLIDE_LEFT_RIGHT)
@@ -50,13 +53,21 @@ class Game:
 
     def _create_menu_page(self):
         """Creates the main menu screen with a styled central panel."""
-        centering_box = Gtk.VBox(halign=Gtk.Align.FILL, valign=Gtk.Align.FILL)
+        main_container = Gtk.VBox(halign=Gtk.Align.FILL, valign=Gtk.Align.FILL)
+        main_container.set_hexpand(True)
+        main_container.set_vexpand(True)
+        
+        centering_box = Gtk.VBox(halign=Gtk.Align.CENTER, valign=Gtk.Align.CENTER)
         centering_box.set_hexpand(True)
         centering_box.set_vexpand(True)
         
         menu_panel = Gtk.VBox(spacing=15)
-        menu_panel.set_hexpand(True)
-        menu_panel.set_vexpand(True)
+        menu_panel.set_hexpand(False)
+        menu_panel.set_vexpand(False)
+        
+        menu_width = min(450, max(350, self.screen_width // 3))
+        menu_panel.set_size_request(menu_width, -1)
+        
         menu_panel.get_style_context().add_class("menu-panel")
         
         self.menu_title = Gtk.Label()
@@ -81,12 +92,12 @@ class Game:
         button_box.pack_start(btn_player, False, False, 0)
         
         menu_panel.pack_start(button_box, False, False, 0)
-        
         centering_box.pack_start(menu_panel, False, False, 0)
+        main_container.pack_start(centering_box, True, True, 0)
         
-        centering_box.show_all()
-        self.menu_page_container = centering_box
-        return centering_box
+        main_container.show_all()
+        self.menu_page_container = main_container
+        return main_container
         
     def _start_game(self, widget, mode):
         self.game_mode = mode
@@ -105,7 +116,15 @@ class Game:
         return self.overlay
         
     def _create_main_content(self):
-        self.main_box = Gtk.VBox(spacing=15, margin=0)
+        main_container = Gtk.VBox(halign=Gtk.Align.FILL, valign=Gtk.Align.FILL)
+        main_container.set_hexpand(True)
+        main_container.set_vexpand(True)
+        
+        content_container = Gtk.VBox(spacing=15, margin=20)
+        content_container.set_halign(Gtk.Align.CENTER)
+        content_container.set_valign(Gtk.Align.CENTER)
+        content_container.set_hexpand(False)
+        content_container.set_vexpand(False)
 
         top_bar = Gtk.HBox(spacing=10)
 
@@ -116,10 +135,10 @@ class Game:
         label_vbox.pack_start(self.info_label, False, False, 0)
         top_bar.pack_start(label_vbox, True, True, 0)
         
-        self.main_box.pack_start(top_bar, False, False, 5)
+        content_container.pack_start(top_bar, False, False, 5)
         
         self.grid_container = Gtk.VBox(spacing=10, halign=Gtk.Align.CENTER, valign=Gtk.Align.CENTER)
-        self.main_box.pack_start(self.grid_container, True, True, 10)
+        content_container.pack_start(self.grid_container, False, False, 10)
 
         button_box = Gtk.HBox(spacing=10, halign=Gtk.Align.CENTER)
         self.move_buttons = []
@@ -129,7 +148,10 @@ class Game:
             button.connect("clicked", self._player_move, i)
             self.move_buttons.append(button)
             button_box.pack_start(button, False, False, 0)
-        self.main_box.pack_start(button_box, False, False, 10)
+        content_container.pack_start(button_box, False, False, 10)
+        
+        main_container.pack_start(content_container, True, True, 0)
+        self.main_box = main_container
 
     def _on_menu_clicked(self, button):
         self.stack.set_visible_child_name("menu_page")
@@ -200,23 +222,60 @@ class Game:
         self.total_steps = 0
         self.game_over = False
         self.current_player = 1
+        
         for child in self.grid_container.get_children():
             child.destroy()
-        cells_row = Gtk.HBox(spacing=5, halign=Gtk.Align.CENTER)
+        
+        cell_width = 60
+        cell_spacing = 5 
+        margin = 40
+        available_width = self.screen_width - (2 * margin)
+        
+        cells_per_row = max(1, available_width // (cell_width + cell_spacing))
+        
+        if self.N <= cells_per_row:
+            rows = 1
+            cells_in_rows = [self.N]
+        elif self.N <= cells_per_row * 2:
+            rows = 2
+            cells_first_row = (self.N + 1) // 2
+            cells_in_rows = [cells_first_row, self.N - cells_first_row]
+        else:
+            rows = 3
+            cells_per_full_row = self.N // 3
+            extra_cells = self.N % 3
+            cells_in_rows = []
+            for i in range(3):
+                cells_in_this_row = cells_per_full_row + (1 if i < extra_cells else 0)
+                cells_in_rows.append(cells_in_this_row)
+        
         self.cell_labels = []
-        for i in range(self.N):
-            cell = Gtk.Label()
-            cell.set_size_request(60, 60)
-            cell.set_halign(Gtk.Align.CENTER); cell.set_valign(Gtk.Align.CENTER)
-            cell_frame = Gtk.Frame(shadow_type=Gtk.ShadowType.OUT)
-            cell_frame.add(cell)
-            cells_row.pack_start(cell_frame, False, False, 0)
-            self.cell_labels.append(cell)
-        self.grid_container.pack_start(cells_row, False, False, 0)
+        cell_index = self.N - 1
+        
+        grid_box = Gtk.VBox(spacing=5, halign=Gtk.Align.CENTER)
+        
+        for row in range(rows):
+            row_box = Gtk.HBox(spacing=5, halign=Gtk.Align.CENTER)
+            
+            for col in range(cells_in_rows[row]):
+                cell = Gtk.Label()
+                cell.set_size_request(cell_width, 60)
+                cell.set_halign(Gtk.Align.CENTER)
+                cell.set_valign(Gtk.Align.CENTER)
+                cell_frame = Gtk.Frame(shadow_type=Gtk.ShadowType.OUT)
+                cell_frame.add(cell)
+                row_box.pack_start(cell_frame, False, False, 0)
+                self.cell_labels.insert(0, cell)
+                cell_index -= 1
+        
+            grid_box.pack_start(row_box, False, False, 0)
+        
+        self.grid_container.pack_start(grid_box, False, False, 0)
         self.grid_container.show_all()
         self._apply_theme()
         self._update_ui_state()
-        if self.show_help: self.hide_help()
+        if self.show_help: 
+            self.hide_help()
             
     def _rgb_to_css(self, color):
         if len(color) == 3: return f"#{color[0]:02x}{color[1]:02x}{color[2]:02x}"
@@ -280,7 +339,7 @@ class Game:
 
         /* General button styling */
         button {{
-            border-radius: 8px; /* Slightly more rounded */
+            border-radius: 8px;
             border: none;
             font-weight: bold;
         }}
@@ -291,7 +350,6 @@ class Game:
             padding: 15px;
             background-color: {btn_primary_bg};
             color: {text_light_color};
-            transition: all 0.2s;
         }}
         .menu-button:hover {{
             opacity: 0.9;
@@ -314,15 +372,25 @@ class Game:
         }}
         
         /* Help Panel */
-        .help-overlay {{ background-color: {help_bg_rgba}; }}
+        .help-overlay {{ 
+            background-color: {help_bg_rgba}; 
+        }}
         .help-panel {{
             background-color: {card_bg};
             border: 2px solid {border_color};
             border-radius: 10px; 
             padding: 30px;
         }}
-        .help-title {{ font-size: 20px; font-weight: bold; color: {text_color}; margin-bottom: 15px; }}
-        .help-content {{ font-size: 14px; color: {text_color}; }}
+        .help-title {{ 
+            font-size: 20px; 
+            font-weight: bold; 
+            color: {text_color}; 
+            margin-bottom: 15px; 
+        }}
+        .help-content {{ 
+            font-size: 14px; 
+            color: {text_color}; 
+        }}
         """.encode('utf-8')
         
         css_provider.load_from_data(css_data)
@@ -334,43 +402,59 @@ class Game:
 
     def _load_help_content(self):
         return """HOW TO PLAY:
-• Character starts at the rightmost cell
-• Take turns moving LEFT by 1, 2, or 3 spaces
-• Game ends when character reaches the finish line (cell 0)
+    • Character starts at the highest numbered cell
+    • Take turns moving toward cell 0 by 1, 2, or 3 spaces
+    • Game ends when character reaches the finish line (cell 0)
 
-WINNING (VS COMPUTER):
-• If total steps taken is EVEN → You win!
-• If total is ODD → Computer wins!
+    WINNING:
+    • If total steps taken is EVEN → You win!
+    • If total is ODD → The opponent wins!
 
-WINNING (VS PLAYER):
-• Player 1 wins if the total steps is EVEN.
-• Player 2 wins if the total steps is ODD.
-The player who makes the final move determines the outcome!
+    GAME LAYOUT:
+    • Numbers represent positions from highest to 0
+    • Character moves from higher numbers toward 0
+    • Multi-row layout preserves number sequence automatically
 
-CONTROLS:
-• Click "1", "2", or "3" buttons to move that many spaces
-• Press ESC or click outside to close this help"""
+    CONTROLS:
+    • Click "1", "2", or "3" buttons to move that many spaces
+    • Use toolbar buttons to restart, change theme, or return to menu"""
     
     def _create_help_overlay(self):
         self.help_overlay = Gtk.EventBox(halign=Gtk.Align.FILL, valign=Gtk.Align.FILL)
         self.help_overlay.get_style_context().add_class("help-overlay")
-        help_panel = Gtk.VBox(spacing=15, halign=Gtk.Align.CENTER, valign=Gtk.Align.CENTER)
-        help_panel.set_size_request(600, 480)
+        
+        centering_box = Gtk.VBox(halign=Gtk.Align.CENTER, valign=Gtk.Align.CENTER)
+        centering_box.set_hexpand(True)
+        centering_box.set_vexpand(True)
+        
+        help_panel = Gtk.VBox(spacing=15)
+        
+        help_width = min(600, self.screen_width - 100)
+        help_height = min(480, self.screen_height - 100)
+        help_panel.set_size_request(help_width, help_height)
+        
         help_panel.get_style_context().add_class("help-panel")
+        
         help_title = Gtk.Label()
         help_title.get_style_context().add_class("help-title")
         help_title.set_markup("<b>HOW TO PLAY</b>")
         help_panel.pack_start(help_title, False, False, 0)
+        
         help_content = Gtk.Label()
         help_content.set_text(self._load_help_content())
-        help_content.set_halign(Gtk.Align.START); help_content.set_valign(Gtk.Align.START)
-        help_content.set_line_wrap(True); help_content.set_max_width_chars(60)
+        help_content.set_halign(Gtk.Align.START)
+        help_content.set_valign(Gtk.Align.START)
+        help_content.set_line_wrap(True)
+        help_content.set_max_width_chars(60)
         help_content.get_style_context().add_class("help-content")
+        
         scrolled = Gtk.ScrolledWindow()
         scrolled.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
         scrolled.add(help_content)
         help_panel.pack_start(scrolled, True, True, 0)
-        self.help_overlay.add(help_panel)
+        
+        centering_box.pack_start(help_panel, False, False, 0)
+        self.help_overlay.add(centering_box)
         self.help_overlay.connect("button-press-event", self._on_help_overlay_click)
         self.help_overlay.set_can_focus(True)
         self.help_overlay.connect("key-press-event", self._on_key_press)
@@ -388,11 +472,21 @@ CONTROLS:
         self.help_overlay.hide()
     
     def _on_help_overlay_click(self, widget, event):
-        child = widget.get_child()
-        if not child: return False
-        allocation = child.get_allocation()
-        if (event.x < allocation.x or event.x > allocation.x + allocation.width or
-            event.y < allocation.y or event.y > allocation.y + allocation.height):
+        centering_box = widget.get_child()
+        if not centering_box:
+            return False
+        help_panel = centering_box.get_children()[0] if centering_box.get_children() else None
+        if not help_panel:
+            return False
+        
+        allocation = help_panel.get_allocation()
+        parent_allocation = centering_box.get_allocation()
+        
+        panel_x = parent_allocation.x + allocation.x
+        panel_y = parent_allocation.y + allocation.y
+        
+        if (event.x < panel_x or event.x > panel_x + allocation.width or
+            event.y < panel_y or event.y > panel_y + allocation.height):
             self.hide_help()
         return False
     
