@@ -16,28 +16,101 @@
 
 import gi
 gi.require_version('Gtk', '3.0')
-from gi.repository import Gtk
+from gi.repository import Gtk, GLib
 from sugar3.activity import activity
 from sugar3.graphics.toolbarbox import ToolbarBox
 from sugar3.activity.widgets import ActivityToolbarButton
 from sugar3.activity.widgets import StopButton
 from sugar3.graphics.toolbutton import ToolButton
 from gettext import gettext as _
-from game import Game  # Import the Game class
+import os
+import json
+import time
+from collabwrapper import CollabWrapper
+from game import Game
 
 class OddScoring(activity.Activity):
     def __init__(self, handle):
         activity.Activity.__init__(self, handle)
         
+        print("DEBUG: OddScoring activity starting...")
+        
+        self._loaded_from_journal = False
+        self._read_file_called = False
+        
         # Create toolbar
         self._create_toolbar()
+        print("DEBUG: Toolbar created")
         
         # Create game instance
-        self.game = Game()
+        try:
+            self.game = Game()
+            print("DEBUG: Game instance created")
+        except Exception as e:
+            print(f"ERROR: Failed to create game: {e}")
+            import traceback
+            traceback.print_exc()
+            return
         
-        # Set the game widget as the canvas
-        self.set_canvas(self.game.get_widget())
-        self.game.get_widget().show_all()
+        try:
+            self._collab = CollabWrapper(self)
+            self._collab.connect('joined', self.__joined_cb)
+            self._collab.connect('buddy_joined', self.__buddy_joined_cb)
+            self._collab.connect('buddy_left', self.__buddy_left_cb)
+            self._collab.connect('message', self.__message_cb)
+            print("DEBUG: CollabWrapper created")
+        except Exception as e:
+            print(f"ERROR: Failed to create CollabWrapper: {e}")
+            self._collab = None
+        
+        if self._collab:
+            self.game.set_collab_wrapper(self._collab)
+            print("DEBUG: Game connected to collaboration")
+        
+        try:
+            game_widget = self.game.get_widget()
+            print(f"DEBUG: Got game widget: {game_widget}")
+            self.set_canvas(game_widget)
+            print("DEBUG: Canvas set")
+            
+            game_widget.show_all()
+            print("DEBUG: Game widget shown")
+        except Exception as e:
+            print(f"ERROR: Failed to set canvas: {e}")
+            import traceback
+            traceback.print_exc()
+        
+        if self._collab:
+            GLib.timeout_add(500, self._setup_collab)
+        
+        GLib.timeout_add(200, self._check_and_show_menu)
+        
+        print("DEBUG: OddScoring activity initialization complete")
+    
+    def _setup_collab(self):
+        """Setup collaboration after everything is initialized"""
+        print("DEBUG: Setting up collaboration")
+        try:
+            if self._collab:
+                self._collab.setup()
+        except Exception as e:
+            print(f"ERROR: Failed to setup collaboration: {e}")
+        return False
+    
+    def _check_and_show_menu(self):
+        """Show menu only if we haven't loaded from journal"""
+        print(f"DEBUG: _check_and_show_menu called, _read_file_called={self._read_file_called}")
+        try:
+            if not self._read_file_called:
+                print("DEBUG: No journal file to load, showing menu")
+                self.game.show_menu()
+            else:
+                print("DEBUG: Journal file is being loaded, not showing menu")
+        except Exception as e:
+            print(f"ERROR: Failed to show menu: {e}")
+            import traceback
+            traceback.print_exc()
+        return False
     
     def _create_toolbar(self):
         toolbar_box = ToolbarBox()
@@ -90,18 +163,30 @@ class OddScoring(activity.Activity):
     
     def _toggle_theme(self, button):
         """Toggle theme"""
-        self.game.toggle_theme()
+        try:
+            self.game.toggle_theme()
+        except Exception as e:
+            print(f"ERROR: Failed to toggle theme: {e}")
 
     def _reset_game(self, button):
         """Reset the game"""
-        self.game.reset_game()
+        try:
+            self.game.reset_game()
+        except Exception as e:
+            print(f"ERROR: Failed to reset game: {e}")
     
     def _on_menu_clicked(self, button):
-        self.game._on_menu_clicked(button)
+        try:
+            self.game.show_menu()
+        except Exception as e:
+            print(f"ERROR: Failed to show menu: {e}")
     
     def _show_help(self, button):
         """Toggle help panel"""
-        self.game.toggle_help()
+        try:
+            self.game.toggle_help()
+        except Exception as e:
+            print(f"ERROR: Failed to toggle help: {e}")
     
     def read_file(self, file_path):
         """Handle file reading if needed"""

@@ -21,6 +21,13 @@ import os
 import random
 from config import Theme
 
+from enum import Enum
+
+class GameMode(Enum):
+    VS_BOT = 1
+    VS_PLAYER = 2
+    NETWORK_MULTIPLAYER = 3
+
 class Game:
     def __init__(self):
         self.current_theme = 'LIGHT'
@@ -32,10 +39,18 @@ class Game:
         self.total_steps = 0
         self.game_over = False
         self.current_player = 1
+
+        self._collab = None
+        self.is_host = False
+        self.network_players = []
+        self.my_player_number = None
+        self.opponent_buddy = None
+        self.game_started = False
+
         self.screen = Gdk.Screen.get_default()
         self.screen_width = self.screen.get_width()
         self.screen_height = self.screen.get_height()
-
+        
         self._load_images()
 
         self.stack = Gtk.Stack()
@@ -52,7 +67,7 @@ class Game:
         
     def get_widget(self):
         return self.stack
-    
+
     def _load_images(self):
         """Load PNG images for player and finish line"""
         self.player_pixbuf = None
@@ -75,23 +90,10 @@ class Game:
                 )
         except Exception as e:
             print(f"Could not load finish image: {e}")
-    
-    def _create_cell_content(self, cell_index):
-        """Create the content for a cell (image + number)"""
-        vbox = Gtk.VBox(spacing=2, halign=Gtk.Align.CENTER, valign=Gtk.Align.CENTER)
-        
-        image_container = Gtk.VBox(halign=Gtk.Align.CENTER, valign=Gtk.Align.CENTER)
-        image_container.set_size_request(32, 32)
-        
-        number_label = Gtk.Label()
-        
-        vbox.pack_start(image_container, False, False, 0)
-        vbox.pack_start(number_label, False, False, 0)
-        
-        return vbox, image_container, number_label
 
     def _create_menu_page(self):
         """Creates the main menu screen with a styled central panel."""
+        print("DEBUG: _create_menu_page() called")
         main_container = Gtk.VBox(halign=Gtk.Align.FILL, valign=Gtk.Align.FILL)
         main_container.set_hexpand(True)
         main_container.set_vexpand(True)
@@ -122,13 +124,19 @@ class Game:
         
         btn_bot = Gtk.Button(label="Play vs. Computer")
         btn_bot.get_style_context().add_class("menu-button")
-        btn_bot.connect("clicked", self._start_game, 'VS_BOT')
+        btn_bot.connect("clicked", self._start_game, GameMode.VS_BOT)
         button_box.pack_start(btn_bot, False, False, 0)
 
-        btn_player = Gtk.Button(label="Play vs. Player")
+        btn_player = Gtk.Button(label="Play vs. Player (Local)")
         btn_player.get_style_context().add_class("menu-button")
-        btn_player.connect("clicked", self._start_game, 'VS_PLAYER')
+        btn_player.connect("clicked", self._start_game, GameMode.VS_PLAYER)
         button_box.pack_start(btn_player, False, False, 0)
+
+        btn_network = Gtk.Button(label="Play vs. Player (Network)")
+        btn_network.get_style_context().add_class("menu-button")
+        btn_network.connect("clicked", self._start_game, GameMode.NETWORK_MULTIPLAYER)
+        print("DEBUG: Network button created and connected")
+        button_box.pack_start(btn_network, False, False, 0)
         
         menu_panel.pack_start(button_box, False, False, 0)
         centering_box.pack_start(menu_panel, False, False, 0)
@@ -137,22 +145,190 @@ class Game:
         main_container.show_all()
         self.menu_page_container = main_container
         return main_container
+
+    def show_menu(self):
+        """Show the main menu"""
+        self.stack.set_visible_child_name("menu_page")
         
     def _start_game(self, widget, mode):
-        self.game_mode = mode
-        self.reset_game()
-        self.stack.set_visible_child_name("game_page")
+        print(f"DEBUG: _start_game called with mode: {mode}")
+        try:
+            if mode == GameMode.NETWORK_MULTIPLAYER:
+                print("DEBUG: Starting network multiplayer game")
+                self.game_mode = mode
+                self.is_host = True
+                print("DEBUG: Set as host, calling show_lobby()")
+                self.show_lobby()
+                print("DEBUG: show_lobby() completed")
+            else:
+                print(f"DEBUG: Starting local game mode: {mode}")
+                self.game_mode = mode
+                self.reset_game()
+                self.stack.set_visible_child_name("game_page")
+        except Exception as e:
+            print(f"ERROR: Failed to start game: {e}")
+            import traceback
+            traceback.print_exc()
     
     def _create_game_page(self):
-        self._create_main_content()
-        self._create_help_overlay()
+        print("DEBUG: _create_game_page() called")
+        try:
+            self._create_main_content()
+            print("DEBUG: Main content created")
+            
+            self._create_help_overlay()
+            print("DEBUG: Help overlay created")
+            
+            # Create lobby page
+            self._create_lobby_page()
+            print("DEBUG: Lobby page created")
 
-        self.overlay = Gtk.Overlay()
-        self.overlay.add(self.main_box)
-        self.overlay.add_overlay(self.help_overlay)
+            self.overlay = Gtk.Overlay()
+            self.overlay.add(self.main_box)
+            self.overlay.add_overlay(self.help_overlay)
+            
+            self.overlay.show()
+            print("DEBUG: _create_game_page() completed")
+            return self.overlay
+        except Exception as e:
+            print(f"ERROR: Failed to create game page: {e}")
+            import traceback
+            traceback.print_exc()
+            return Gtk.VBox()
+
+    def _create_lobby_page(self):
+        """Create the lobby/waiting screen UI"""
+        print("DEBUG: _create_lobby_page() called")
+        try:
+            self.lobby_box = Gtk.VBox(spacing=20, halign=Gtk.Align.CENTER, valign=Gtk.Align.CENTER)
+            self.lobby_box.set_hexpand(True)
+            self.lobby_box.set_vexpand(True)
+            
+            title = Gtk.Label()
+            title.set_markup("<span size='x-large' weight='bold'>Network Game Lobby</span>")
+            title.get_style_context().add_class("menu-panel-title")
+            self.lobby_box.pack_start(title, False, False, 0)
+            
+            self.lobby_status_label = Gtk.Label(label="Waiting for another player to join...")
+            self.lobby_status_label.get_style_context().add_class("menu-panel-subtitle")
+            self.lobby_box.pack_start(self.lobby_status_label, False, False, 0)
+            
+            self.lobby_spinner = Gtk.Spinner()
+            self.lobby_spinner.start()
+            self.lobby_box.pack_start(self.lobby_spinner, False, False, 20)
+            
+            players_label = Gtk.Label(label="Players:")
+            players_label.set_halign(Gtk.Align.START)
+            players_label.get_style_context().add_class("menu-panel-subtitle")
+            self.lobby_box.pack_start(players_label, False, False, 0)
+            
+            # Players list
+            lobby_panel = Gtk.VBox(spacing=10)
+            lobby_panel.set_size_request(min(400, self.screen_width - 100), -1)
+            lobby_panel.get_style_context().add_class("menu-panel")
+            
+            self.players_listbox = Gtk.ListBox()
+            self.players_listbox.set_selection_mode(Gtk.SelectionMode.NONE)
+            scrolled = Gtk.ScrolledWindow()
+            scrolled.set_min_content_height(100)
+            scrolled.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+            scrolled.add(self.players_listbox)
+            lobby_panel.pack_start(scrolled, True, True, 0)
+            
+            self.lobby_box.pack_start(lobby_panel, False, False, 0)
+            
+            back_button = Gtk.Button(label="Back to Menu")
+            back_button.get_style_context().add_class("menu-button")
+            back_button.connect("clicked", self._leave_lobby)
+            self.lobby_box.pack_start(back_button, False, False, 20)
+            
+            print("DEBUG: _create_lobby_page() completed successfully")
+        except Exception as e:
+            print(f"ERROR: Failed to create lobby page: {e}")
+            import traceback
+            traceback.print_exc()
+
+    def show_lobby(self):
+        """Show the network game lobby"""
+        print("DEBUG: show_lobby() called")
+        print(f"DEBUG: lobby_box exists: {hasattr(self, 'lobby_box')}")
+        if hasattr(self, 'lobby_box'):
+            print(f"DEBUG: lobby_box children count: {len(self.lobby_box.get_children())}")
+        try:
+            if not hasattr(self, 'lobby_page_added'):
+                print("DEBUG: Creating lobby page")
+                lobby_main_container = Gtk.VBox(halign=Gtk.Align.FILL, valign=Gtk.Align.FILL)
+                lobby_main_container.set_hexpand(True)
+                lobby_main_container.set_vexpand(True)
+                
+                theme_colors = Theme.LIGHT if self.current_theme == 'LIGHT' else Theme.DARK
+                bg_color = self._rgb_to_gdk(theme_colors['BG'])
+                lobby_main_container.override_background_color(Gtk.StateFlags.NORMAL, bg_color)
+                
+                lobby_main_container.pack_start(self.lobby_box, True, True, 0)
+                
+                self.stack.add_named(lobby_main_container, "lobby_page")
+                self.lobby_page_added = True
+                self.lobby_main_container = lobby_main_container
+                print("DEBUG: Lobby page created and added to stack")
+            else:
+                print("DEBUG: Lobby page already exists")
+            
+            print("DEBUG: Setting visible child to lobby_page")
+            self.stack.set_visible_child_name("lobby_page")
+            print(f"DEBUG: Current visible child: {self.stack.get_visible_child_name()}")
+            
+            self.game_started = False
+            self.opponent_buddy = None
+            
+            print("DEBUG: Clearing players list")
+            for child in self.players_listbox.get_children():
+                self.players_listbox.remove(child)
+            
+            print("DEBUG: Adding self to players list")
+            self_row = Gtk.ListBoxRow()
+            self_label = Gtk.Label(label=f"{self._get_my_nick()} (You - {'Host' if self.is_host else 'Guest'})")
+            self_label.set_halign(Gtk.Align.START)
+            self_row.add(self_label)
+            self.players_listbox.add(self_row)
+            if self.is_host:
+                self.my_player_number = 1
+            else:
+                self.my_player_number = 2
+            
+            print("DEBUG: Showing all widgets")
+            self.players_listbox.show_all()
+            self.stack.show_all()
+            
+            print("DEBUG: Applying theme")
+            self._apply_theme()
+            
+            print("DEBUG: show_lobby() completed successfully")
+            
+        except Exception as e:
+            print(f"ERROR: Failed to show lobby: {e}")
+            import traceback
+            traceback.print_exc()
+
+    def _leave_lobby(self, widget):
+        """Leave the lobby and go back to menu"""
+        print("DEBUG: _leave_lobby called")
         
-        self.overlay.show()
-        return self.overlay
+        if not hasattr(self, 'lobby_start_button'):
+            print("DEBUG: Testing start button creation manually")
+            self._add_start_button()
+        
+        if hasattr(self, 'lobby_spinner'):
+            self.lobby_spinner.stop()
+        self.show_menu()
+
+    def _get_my_nick(self):
+        """Get our own nickname for display"""
+        try:
+            from sugar3.profile import get_nick_name
+            return get_nick_name()
+        except:
+            return "Player"
         
     def _create_main_content(self):
         main_container = Gtk.VBox(halign=Gtk.Align.FILL, valign=Gtk.Align.FILL)
@@ -165,16 +341,25 @@ class Game:
         content_container.set_hexpand(False)
         content_container.set_vexpand(False)
 
-        top_bar = Gtk.HBox(spacing=10)
+        header_box = Gtk.HBox(spacing=10)
+        
+        back_button = Gtk.Button(label="← Menu")
+        back_button.get_style_context().add_class("secondary-button")
+        back_button.connect("clicked", self._on_menu_clicked)
+        header_box.pack_start(back_button, False, False, 0)
 
         label_vbox = Gtk.VBox(halign=Gtk.Align.CENTER, hexpand=True)
         self.title_label = Gtk.Label()
         self.info_label = Gtk.Label()
         label_vbox.pack_start(self.title_label, False, False, 0)
         label_vbox.pack_start(self.info_label, False, False, 0)
-        top_bar.pack_start(label_vbox, True, True, 0)
+        header_box.pack_start(label_vbox, True, True, 0)
+
+        self.connection_status = Gtk.Label()
+        self.connection_status.set_markup("<span color='green'>● Connected</span>")
+        header_box.pack_end(self.connection_status, False, False, 0)
         
-        content_container.pack_start(top_bar, False, False, 5)
+        content_container.pack_start(header_box, False, False, 5)
         
         self.grid_container = Gtk.VBox(spacing=10, halign=Gtk.Align.CENTER, valign=Gtk.Align.CENTER)
         content_container.pack_start(self.grid_container, False, False, 10)
@@ -192,19 +377,52 @@ class Game:
         main_container.pack_start(content_container, True, True, 0)
         self.main_box = main_container
 
-    def _on_menu_clicked(self, button):
-        self.stack.set_visible_child_name("menu_page")
+    def _on_menu_clicked(self, button=None):
+        self.show_menu()
     
     def _player_move(self, widget, steps):
-        if self.game_over: return
+        if self.game_over: 
+            return
+            
+        if (self.game_mode == GameMode.NETWORK_MULTIPLAYER and 
+            self.current_player != self.my_player_number):
+            print("DEBUG: Not your turn!")
+            return
+        
+        if self.current_player == 2 and self.game_mode == GameMode.VS_BOT:
+            return 
+        
+        print(f"DEBUG: Player {self.current_player} making move: {steps} steps")
+        
         self.current_position -= steps
         self.total_steps += steps
-        if self._check_game_over(): return
-        if self.game_mode == 'VS_BOT':
+        
+        if self.game_mode == GameMode.NETWORK_MULTIPLAYER and self._collab:
+            move_message = {
+                'action': 'move',
+                'player': self.current_player,
+                'steps': steps,
+                'new_position': self.current_position,
+                'total_steps': self.total_steps
+            }
+            print(f"DEBUG: Sending move message: {move_message}")
+            try:
+                self._collab.post(move_message)
+                print("DEBUG: Move message sent successfully")
+            except Exception as e:
+                print(f"ERROR: Failed to send move: {e}")
+        
+        if self._check_game_over(): 
+            return
+            
+        if self.game_mode == GameMode.VS_BOT:
             self.current_player = 2
             self._update_ui_state()
             GLib.timeout_add(1000, self._computer_move)
-        else:
+        elif self.game_mode == GameMode.VS_PLAYER:
+            self.current_player = 2 if self.current_player == 1 else 1
+            self._update_ui_state()
+        elif self.game_mode == GameMode.NETWORK_MULTIPLAYER:
             self.current_player = 2 if self.current_player == 1 else 1
             self._update_ui_state()
 
@@ -225,15 +443,104 @@ class Game:
         if self.current_position <= 0:
             self.current_position = 0
             self.game_over = True
+            
+            if self.game_mode == GameMode.NETWORK_MULTIPLAYER and self._collab:
+                is_total_even = self.total_steps % 2 == 0
+                winner = 1 if is_total_even else 2
+                
+                game_over_message = {
+                    'action': 'game_over',
+                    'total_steps': self.total_steps,
+                    'winner': winner,
+                    'final_position': self.current_position
+                }
+                try:
+                    self._collab.post(game_over_message)
+                    print(f"DEBUG: Sent game over message: {game_over_message}")
+                except Exception as e:
+                    print(f"ERROR: Failed to send game over: {e}")
+            
             self._update_ui_state()
+            self._show_game_over_dialog()
             return True
         return False
+
+    def _show_game_over_dialog(self):
+        """Show game over dialog with winner information"""
+        is_total_even = self.total_steps % 2 == 0
+        
+        if self.game_mode == GameMode.VS_BOT:
+            winner_text = "You win!" if is_total_even else "Computer wins!"
+        elif self.game_mode == GameMode.VS_PLAYER:
+            winner_text = f"Player {1 if is_total_even else 2} wins!"
+        elif self.game_mode == GameMode.NETWORK_MULTIPLAYER:
+            if is_total_even:
+                winner_text = "You win!" if self.my_player_number == 1 else f"{self.opponent_buddy.props.nick} wins!"
+            else:
+                winner_text = "You win!" if self.my_player_number == 2 else f"{self.opponent_buddy.props.nick} wins!"
+        
+        GLib.timeout_add(1000, lambda: self._delayed_game_over_dialog(winner_text))
+
+    def _delayed_game_over_dialog(self, winner_text):
+        """Show the actual dialog after a delay"""
+        try:
+            parent = None
+            widget = self.stack
+            while widget:
+                if isinstance(widget, Gtk.Window):
+                    parent = widget
+                    break
+                widget = widget.get_parent()
+            
+            dialog = Gtk.MessageDialog(
+                parent=parent,
+                flags=0,
+                message_type=Gtk.MessageType.INFO,
+                buttons=Gtk.ButtonsType.OK,
+                text="Game Over!"
+            )
+            
+            message = f"{winner_text}\n\nTotal steps: {self.total_steps}"
+            dialog.format_secondary_text(message)
+            
+            def on_response(dialog, response):
+                dialog.destroy()
+                self.show_menu()
+            
+            dialog.connect('response', on_response)
+            dialog.show()
+            
+        except Exception as e:
+            print(f"ERROR: Could not show dialog: {e}")
+            GLib.timeout_add(2000, lambda: self.show_menu())
+        
+        return False
+    
+    def _create_cell_content(self, cell_index):
+        """Create the content for a cell (image + number)"""
+        vbox = Gtk.VBox(spacing=2, halign=Gtk.Align.CENTER, valign=Gtk.Align.CENTER)
+        
+        image_container = Gtk.VBox(halign=Gtk.Align.CENTER, valign=Gtk.Align.CENTER)
+        image_container.set_size_request(32, 32)
+        
+        number_label = Gtk.Label()
+        
+        vbox.pack_start(image_container, False, False, 0)
+        vbox.pack_start(number_label, False, False, 0)
+        
+        return vbox, image_container, number_label
     
     def _update_ui_state(self):
         theme_colors = Theme.LIGHT if self.current_theme == 'LIGHT' else Theme.DARK
         text_color = self._rgb_to_css(theme_colors['TEXT'])
         error_color = self._rgb_to_css(theme_colors['ERROR'])
         success_color = self._rgb_to_css(theme_colors['SUCCESS'])
+        
+        if hasattr(self, 'connection_status'):
+            if self.game_mode == GameMode.NETWORK_MULTIPLAYER:
+                self.connection_status.show()
+            else:
+                self.connection_status.hide()
         
         for cell_data in self.cell_contents:
             cell_index = cell_data['index']
@@ -268,21 +575,48 @@ class Game:
             else:
                 number_label.set_markup(f"<span size='small' weight='bold' color='{text_color}'>{cell_index}</span>")
         
-        self.grid_container.show_all()
+        if hasattr(self, 'grid_container'):
+            self.grid_container.show_all()
         
         if self.game_over:
             is_total_even = self.total_steps % 2 == 0
-            winner = ("You" if is_total_even else "Computer") if self.game_mode == 'VS_BOT' else ("Player 1" if is_total_even else "Player 2")
+            if self.game_mode == GameMode.VS_BOT:
+                winner = "You" if is_total_even else "Computer"
+            elif self.game_mode == GameMode.VS_PLAYER:
+                winner = "Player 1" if is_total_even else "Player 2"
+            elif self.game_mode == GameMode.NETWORK_MULTIPLAYER:
+                if is_total_even:
+                    winner = "You" if self.my_player_number == 1 else (self.opponent_buddy.props.nick if self.opponent_buddy else "Player 1")
+                else:
+                    winner = "You" if self.my_player_number == 2 else (self.opponent_buddy.props.nick if self.opponent_buddy else "Player 2")
+            
             result_color = self._rgb_to_css(theme_colors['SUCCESS'])
             self.title_label.set_markup(f"<span size='x-large' weight='bold' color='{result_color}'>{winner.upper()} WINS!</span>")
             self.info_label.set_markup(f"<span color='{text_color}'>Game Over! Total steps: {self.total_steps}.</span>")
         else:
-            turn_text = ("Your Turn" if self.current_player == 1 else "Computer's Turn") if self.game_mode == 'VS_BOT' else f"Player {self.current_player}'s Turn"
-            mode_text = "vs. Computer" if self.game_mode == 'VS_BOT' else "Player vs. Player"
+            if self.game_mode == GameMode.VS_BOT:
+                turn_text = "Your Turn" if self.current_player == 1 else "Computer's Turn"
+                mode_text = "vs. Computer"
+            elif self.game_mode == GameMode.VS_PLAYER:
+                turn_text = f"Player {self.current_player}'s Turn"
+                mode_text = "Player vs. Player"
+            elif self.game_mode == GameMode.NETWORK_MULTIPLAYER:
+                if self.current_player == self.my_player_number:
+                    turn_text = "Your Turn"
+                else:
+                    opponent_name = self.opponent_buddy.props.nick if self.opponent_buddy else "Opponent"
+                    turn_text = f"{opponent_name}'s Turn"
+                mode_text = "Network Game"
+            
             self.title_label.set_markup(f"<span size='x-large' weight='bold' color='{text_color}'>{mode_text}</span>")
             self.info_label.set_markup(f"<span color='{text_color}'>Grid: {self.N} | Steps: {self.total_steps} | <span weight='bold'>{turn_text}</span></span>")
         
-        is_human_turn = (self.game_mode == 'VS_PLAYER') or (self.game_mode == 'VS_BOT' and self.current_player == 1)
+        is_human_turn = True
+        if self.game_mode == GameMode.VS_BOT:
+            is_human_turn = (self.current_player == 1)
+        elif self.game_mode == GameMode.NETWORK_MULTIPLAYER:
+            is_human_turn = (self.current_player == self.my_player_number)
+        
         for i, button in enumerate(self.move_buttons):
             can_move = self.current_position - (i + 1) >= 0
             button.set_sensitive(is_human_turn and not self.game_over and can_move)
@@ -294,8 +628,9 @@ class Game:
         self.game_over = False
         self.current_player = 1
         
-        for child in self.grid_container.get_children():
-            child.destroy()
+        if hasattr(self, 'grid_container'):
+            for child in self.grid_container.get_children():
+                child.destroy()
         
         cell_width = 60
         cell_spacing = 5 
@@ -347,8 +682,10 @@ class Game:
         
             grid_box.pack_start(row_box, False, False, 0)
         
-        self.grid_container.pack_start(grid_box, False, False, 0)
-        self.grid_container.show_all()
+        if hasattr(self, 'grid_container'):
+            self.grid_container.pack_start(grid_box, False, False, 0)
+            self.grid_container.show_all()
+        
         self._apply_theme()
         self._update_ui_state()
         if self.show_help: 
@@ -366,17 +703,22 @@ class Game:
     def _apply_theme(self):
         theme_colors = Theme.LIGHT if self.current_theme == 'LIGHT' else Theme.DARK
         bg_color = self._rgb_to_gdk(theme_colors['BG'])
-        text_color_css = self._rgb_to_css(theme_colors['TEXT'])
 
         self.menu_page_container.override_background_color(Gtk.StateFlags.NORMAL, bg_color)
-        self.main_box.override_background_color(Gtk.StateFlags.NORMAL, bg_color)
+        if hasattr(self, 'main_box'):
+            self.main_box.override_background_color(Gtk.StateFlags.NORMAL, bg_color)
+        
+        if hasattr(self, 'lobby_box'):
+            lobby_parent = self.lobby_box.get_parent()
+            if lobby_parent is not None:
+                lobby_parent.override_background_color(Gtk.StateFlags.NORMAL, bg_color)
         
         self.menu_title.set_markup("<b>Odd Scoring Game</b>")
-        self.menu_subtitle.set_markup("Choose your opponent:")
+        self.menu_subtitle.set_markup("Choose your game mode:")
 
         self._update_css_theme()
 
-        if self.game_mode:
+        if self.game_mode and hasattr(self, 'cell_contents'):
             self._update_ui_state()
 
     def _update_css_theme(self):
@@ -421,7 +763,7 @@ class Game:
             font-weight: bold;
         }}
 
-        /* Menu Buttons (Play vs Bot, etc.) */
+        /* Menu Buttons */
         .menu-button {{
             font-size: 16px;
             padding: 15px;
@@ -432,7 +774,7 @@ class Game:
             opacity: 0.9;
         }}
 
-        /* Move Buttons (1, 2, 3) */
+        /* Move Buttons */
         .move-button {{
             font-size: 16px;
             padding: 10px 20px;
@@ -440,7 +782,7 @@ class Game:
             color: {text_color};
         }}
 
-        /* Secondary buttons (like 'Back to Menu') */
+        /* Secondary buttons */
         .secondary-button {{
             font-size: 14px;
             padding: 8px 16px;
@@ -572,3 +914,473 @@ class Game:
             self.hide_help()
             return True
         return False
+
+    def set_collab_wrapper(self, collab):
+        """Set the collaboration wrapper reference"""
+        self._collab = collab
+        self.is_host = False
+        self.network_players = []
+
+    def on_collaboration_joined(self):
+        """Called when we successfully join a shared activity"""
+        print("DEBUG: on_collaboration_joined called")
+        if self.game_mode == GameMode.NETWORK_MULTIPLAYER:
+            self.is_host = False
+            self.update_lobby_status("Connected! Waiting for game to start...")
+
+    def on_buddy_joined(self, buddy):
+        """Called when another player joins"""
+        print(f"DEBUG: on_buddy_joined called for {buddy.props.nick}")
+        
+        if self.game_mode == GameMode.NETWORK_MULTIPLAYER and not self.game_started:
+            print(f"DEBUG: Network multiplayer mode, game not started")
+            print(f"DEBUG: Current network_players count: {len(self.network_players)}")
+            print(f"DEBUG: Is buddy already in list? {buddy in self.network_players}")
+            
+            if buddy not in self.network_players:
+                print("DEBUG: Adding buddy to network players")
+                buddy_row = Gtk.ListBoxRow()
+                buddy_label = Gtk.Label(label=buddy.props.nick)
+                buddy_label.set_halign(Gtk.Align.START)
+                buddy_row.add(buddy_label)
+                buddy_row.buddy = buddy 
+                self.players_listbox.add(buddy_row)
+                self.players_listbox.show_all()
+                
+                self.network_players.append(buddy)
+                print(f"DEBUG: Network_players count after adding: {len(self.network_players)}")
+                
+                num_players = len(self.network_players) + 1 
+                print(f"DEBUG: Total players: {num_players}")
+                self.lobby_status_label.set_text(f"{num_players} players connected")
+                
+                if len(self.network_players) == 1: 
+                    print("DEBUG: Exactly 1 opponent found, setting up for game start")
+                    self.opponent_buddy = buddy
+                    self.lobby_spinner.stop()
+                    
+                    if self.is_host:
+                        print("DEBUG: I am host, setting ready status and adding start button")
+                        self.lobby_status_label.set_text("Ready! Click 'Start Game' to begin.")
+                        self._add_start_button()
+                        print("DEBUG: _add_start_button() called")
+                    else:
+                        print("DEBUG: I am guest, waiting for host")
+                        self.lobby_status_label.set_text("Ready! Waiting for host to start game...")
+                        
+                        if self._collab:
+                            self._collab.post({
+                                'action': 'player_ready',
+                                'player_nick': self._get_my_nick()
+                            })
+            else:
+                print("DEBUG: Buddy already in network_players, skipping")
+
+    def on_buddy_left(self, buddy):
+        """Called when a player leaves"""
+        print(f"DEBUG: on_buddy_left called for {buddy.props.nick}")
+        
+        if self.game_mode == GameMode.NETWORK_MULTIPLAYER:
+            self.network_players = [p for p in self.network_players if p != buddy]
+            
+            for row in self.players_listbox.get_children():
+                if hasattr(row, 'buddy') and row.buddy == buddy:
+                    self.players_listbox.remove(row)
+                    break
+            
+            if not self.game_started:
+                num_players = len(self.network_players) + 1
+                self.lobby_status_label.set_text(f"{num_players} player(s) connected. Waiting for another player...")
+                self.lobby_spinner.start()
+                
+                if hasattr(self, 'lobby_start_button'):
+                    self.lobby_box.remove(self.lobby_start_button)
+                    del self.lobby_start_button
+            else:
+                if buddy == self.opponent_buddy:
+                    self._handle_opponent_disconnect()
+
+    def _handle_opponent_disconnect(self):
+        """Handle when opponent disconnects during game"""
+        self.game_over = True
+        
+        if hasattr(self, 'connection_status'):
+            self.connection_status.set_markup("<span color='red'>● Disconnected</span>")
+        
+        try:
+            parent = None
+            widget = self.stack
+            while widget:
+                if isinstance(widget, Gtk.Window):
+                    parent = widget
+                    break
+                widget = widget.get_parent()
+            
+            dialog = Gtk.MessageDialog(
+                parent=parent,
+                flags=0,
+                message_type=Gtk.MessageType.WARNING,
+                buttons=Gtk.ButtonsType.OK,
+                text="Opponent Disconnected"
+            )
+            dialog.format_secondary_text("Your opponent has left the game.")
+            
+            def on_response(dialog, response):
+                dialog.destroy()
+                self.show_menu()
+            
+            dialog.connect('response', on_response)
+            dialog.show()
+            
+        except Exception as e:
+            print(f"ERROR: Could not show disconnect dialog: {e}")
+            GLib.timeout_add(2000, lambda: self.show_menu())
+
+    def on_message_received(self, buddy, message):
+        """Handle incoming collaboration messages"""
+        print("DEBUG: on_message_received called in game.py")
+        
+        if not isinstance(message, dict):
+            print(f"ERROR: Message is not a dict, it's {type(message)}")
+            return
+        
+        action = message.get('action')
+        print(f"DEBUG: Action = {action}")
+        print(f"DEBUG: From buddy = {buddy.props.nick}")
+        print(f"DEBUG: Game mode = {self.game_mode}")
+        print(f"DEBUG: Game started = {self.game_started}")
+        
+        if action == 'player_ready':
+            if self.is_host and not self.game_started:
+                print(f"Player {message.get('player_nick')} is ready")
+        
+        elif action == 'game_start':
+            if not self.is_host and not self.game_started:
+                print("Received game start signal from host")
+                self.game_started = True
+                self.opponent_buddy = buddy
+                self.my_player_number = 2
+                self._init_network_game(message)
+        
+        elif action == 'move':
+            print("DEBUG: Received move action")
+            if self.game_mode == GameMode.NETWORK_MULTIPLAYER and self.game_started:
+                print("DEBUG: Processing opponent move")
+                self._handle_opponent_move(message)
+            else:
+                print(f"DEBUG: Not processing move - game_mode={self.game_mode}, game_started={self.game_started}")
+        
+        elif action == 'game_over':
+            if self.game_mode == GameMode.NETWORK_MULTIPLAYER:
+                self._handle_opponent_game_over(message)
+        
+        else:
+            print(f"DEBUG: Unknown action: {action}")
+
+    def _handle_opponent_move(self, move_data):
+        """Process a move received from the opponent"""
+        player = move_data.get('player')
+        steps = move_data.get('steps')
+        new_position = move_data.get('new_position')
+        total_steps = move_data.get('total_steps')
+        
+        print(f"Processing opponent move: Player {player} moved {steps} steps")
+        
+        if player != self.current_player:
+            print(f"ERROR: Received move for player {player} but current player is {self.current_player}")
+            return
+        
+        if player == self.my_player_number:
+            print("ERROR: Received move from opponent but it's marked as our move")
+            return
+        
+        self.current_position = new_position
+        self.total_steps = total_steps
+        
+        if self.current_position <= 0:
+            self.current_position = 0
+            self.game_over = True
+            self._update_ui_state()
+            self._show_game_over_dialog()
+        else:
+            self.current_player = 2 if self.current_player == 1 else 1
+            self._update_ui_state()
+            
+            if self.current_player == self.my_player_number:
+                self._notify_your_turn()
+
+    def _handle_opponent_game_over(self, data):
+        """Handle game over message from opponent"""
+        winner = data.get('winner')
+        total_steps = data.get('total_steps')
+        final_position = data.get('final_position', 0)
+        
+        print(f"Received game over: winner={winner}, steps={total_steps}")
+        
+        self.total_steps = total_steps
+        self.current_position = final_position
+        self.game_over = True
+        
+        self._update_ui_state()
+        self._show_game_over_dialog()
+
+    def _notify_your_turn(self):
+        """Notify player it's their turn with visual feedback"""
+        if not hasattr(self, 'title_label'):
+            return
+            
+        original_markup = self.title_label.get_markup()
+        
+        def flash_on():
+            self.title_label.set_markup("<span background='#4CAF50' foreground='white'><b>  YOUR TURN!  </b></span>")
+            GLib.timeout_add(500, flash_off)
+            return False
+        
+        def flash_off():
+            self.title_label.set_markup(original_markup)
+            return False
+        
+        GLib.timeout_add(100, flash_on)
+
+    def update_lobby_status(self, status):
+        """Update the lobby status message"""
+        if hasattr(self, 'lobby_status_label'):
+            self.lobby_status_label.set_text(status)
+
+    def _add_start_button(self):
+        """Add start game button for host"""
+        print("DEBUG: _add_start_button() called")
+        
+        if hasattr(self, 'lobby_start_button'):
+            print("DEBUG: Start button already exists, returning")
+            return 
+        
+        print("DEBUG: Creating start button")
+        try:
+            self.lobby_start_button = Gtk.Button(label="Start Game")
+            self.lobby_start_button.get_style_context().add_class("menu-button")
+            self.lobby_start_button.connect("clicked", self._start_network_game)
+            
+            children = self.lobby_box.get_children()
+            back_button_index = len(children) - 1 
+            
+            back_button = children[-1] if children else None
+            if back_button:
+                self.lobby_box.remove(back_button)
+            
+            self.lobby_box.pack_start(self.lobby_start_button, False, False, 10)
+            
+            if back_button:
+                self.lobby_box.pack_start(back_button, False, False, 20)
+            
+            self.lobby_box.show_all()
+            self.stack.show_all()
+            
+            print("DEBUG: Start button added successfully (before back button)")
+            
+        except Exception as e:
+            print(f"ERROR: Failed to add start button: {e}")
+            import traceback
+            traceback.print_exc()
+
+    def _start_network_game(self, widget):
+        """Start the network game (host only)"""
+        if not self.is_host or not self.opponent_buddy:
+            print("ERROR: Cannot start game - not host or no opponent")
+            return
+        
+        if len(self.network_players) != 1:
+            print(f"ERROR: Wrong number of players: {len(self.network_players)}")
+            return
+        
+        print("Host starting network game...")
+        self.game_started = True
+        
+        N = random.randint(8, 20)
+        
+        initial_state = {
+            'action': 'game_start',
+            'N': N,
+            'current_player': 1,
+            'host_player': 1,
+            'guest_player': 2
+        }
+        
+        if self._collab:
+            print(f"Sending initial state: {initial_state}")
+            self._collab.post(initial_state)
+        
+        self._init_network_game(initial_state)
+
+    def _init_network_game(self, initial_state):
+        """Initialize the network game with given state"""
+        print(f"Initializing network game with state: {initial_state}")
+        
+        self.game_mode = GameMode.NETWORK_MULTIPLAYER
+        
+        self.N = initial_state['N']
+        self.current_position = self.N - 1
+        self.total_steps = 0
+        self.current_player = initial_state['current_player']
+        self.game_over = False
+        
+        self.stack.set_visible_child_name("game_page")
+        
+        self.reset_game()
+        
+        if self.is_host:
+            self._show_game_start_message("You are Player 1. You start!")
+        else:
+            self._show_game_start_message("You are Player 2. Waiting for Player 1...")
+
+    def _show_game_start_message(self, message):
+        """Show a temporary message when game starts"""
+        try:
+            parent = None
+            widget = self.stack
+            while widget:
+                if isinstance(widget, Gtk.Window):
+                    parent = widget
+                    break
+                widget = widget.get_parent()
+            
+            dialog = Gtk.MessageDialog(
+                parent=parent,
+                flags=0,
+                message_type=Gtk.MessageType.INFO,
+                buttons=Gtk.ButtonsType.OK,
+                text="Network Game Started!"
+            )
+            dialog.format_secondary_text(message)
+            
+            def on_response(dialog, response):
+                dialog.destroy()
+            
+            dialog.connect('response', on_response)
+            dialog.show()
+            
+        except Exception as e:
+            print(f"ERROR: Could not show game start dialog: {e}")
+
+    def get_game_state_for_sync(self):
+        """Get current game state for syncing with joining player"""
+        if self.game_mode != GameMode.NETWORK_MULTIPLAYER or not self.game_started:
+            return {}
+        
+        return {
+            'game_in_progress': True,
+            'N': self.N,
+            'current_position': self.current_position,
+            'total_steps': self.total_steps,
+            'current_player': self.current_player,
+            'game_over': self.game_over,
+            'host_player': 1,
+            'guest_player': 2
+        }
+
+    def set_game_state_from_sync(self, data):
+        """Set game state when joining a game in progress"""
+        if data.get('game_in_progress'):
+            print("Joining game in progress...")
+            self.game_mode = GameMode.NETWORK_MULTIPLAYER 
+            self.is_host = False
+            self.my_player_number = 2
+            self.game_started = True
+            
+            self.N = data.get('N', 10)
+            self.current_position = data.get('current_position', self.N - 1)
+            self.total_steps = data.get('total_steps', 0)
+            self.current_player = data.get('current_player', 1)
+            self.game_over = data.get('game_over', False)
+            
+            self.stack.set_visible_child_name("game_page")
+            self.reset_game()
+
+    def save_state(self):
+        """Return the current game state as a dictionary for Journal saving"""
+        import json
+        
+        state = {}
+        
+        try:
+            state['game_mode'] = self.game_mode.value if self.game_mode else 1
+            state['current_theme'] = self.current_theme
+            state['show_help'] = self.show_help
+            state['N'] = self.N
+            state['current_position'] = self.current_position
+            state['total_steps'] = self.total_steps
+            state['game_over'] = self.game_over
+            state['current_player'] = self.current_player
+            
+            state['is_host'] = self.is_host
+            state['my_player_number'] = self.my_player_number
+            state['game_started'] = self.game_started
+            
+            if self.game_mode and self.N > 0:
+                state['game_in_progress'] = True
+            else:
+                state['game_in_progress'] = False
+            
+            json.dumps(state)
+            
+        except Exception as e:
+            print(f"ERROR: Failed to create save state: {e}")
+            return {
+                'game_mode': 1,
+                'current_theme': 'LIGHT', 
+                'game_in_progress': False
+            }
+        
+        return state
+
+    def load_state(self, state):
+        """Load game state from a dictionary"""
+        print("DEBUG: Starting load_state")
+        print(f"DEBUG: State keys received: {list(state.keys()) if state else 'None'}")
+        
+        try:
+            try:
+                game_mode_value = state.get('game_mode', 1)
+                self.game_mode = GameMode(game_mode_value)
+                print(f"DEBUG: Game mode set to: {self.game_mode}")
+            except Exception as e:
+                print(f"ERROR: Failed to load game_mode: {e}")
+                self.game_mode = GameMode.VS_BOT
+            
+            self.current_theme = state.get('current_theme', 'LIGHT')
+            self.show_help = state.get('show_help', False)
+            
+            self.N = state.get('N', 0)
+            self.current_position = state.get('current_position', 0)
+            self.total_steps = state.get('total_steps', 0)
+            self.game_over = state.get('game_over', False)
+            self.current_player = state.get('current_player', 1)
+            
+            self.is_host = state.get('is_host', False)
+            self.my_player_number = state.get('my_player_number', None)
+            self.game_started = state.get('game_started', False)
+            
+            game_in_progress = state.get('game_in_progress', False)
+            print(f"DEBUG: Game in progress = {game_in_progress}")
+            
+            if game_in_progress and self.N > 0:
+                print("DEBUG: Game was in progress, restoring UI")
+                
+                self.stack.set_visible_child_name("game_page")
+                self.reset_game()
+                
+                self._apply_theme()
+                
+            else:
+                print("DEBUG: No game in progress, showing menu")
+                self.show_menu()
+            
+            print("DEBUG: load_state completed successfully")
+            return True
+            
+        except Exception as e:
+            print(f"ERROR: Fatal error in load_state: {e}")
+            import traceback
+            traceback.print_exc()
+            self.show_menu()
+            return False
