@@ -23,6 +23,14 @@ from config import Theme
 
 from enum import Enum
 
+from sugar3.graphics.toolbutton import ToolButton  
+from sugar3.graphics.icon import Icon
+from sugar3.graphics.xocolor import XoColor
+from sugar3.graphics import style
+from sugar3.graphics.palettemenu import PaletteMenuBox
+from sugar3.graphics.palettemenu import PaletteMenuItem
+from gettext import gettext as _
+
 class GameMode(Enum):
     VS_BOT = 1
     VS_PLAYER = 2
@@ -391,7 +399,200 @@ class Game:
         GLib.timeout_add(1000, lambda: self._delayed_game_over_dialog(winner_text))
 
     def _delayed_game_over_dialog(self, winner_text):
-        """Show the actual dialog after a delay"""
+        """Show Sugar-style game over dialog with winner information"""
+        is_total_even = self.total_steps % 2 == 0
+        
+        if self.game_mode == GameMode.VS_BOT:
+            winner_icon = "emblem-favorite" if is_total_even else "computer"
+        elif self.game_mode == GameMode.VS_PLAYER:
+            winner_icon = "emblem-favorite"
+        elif self.game_mode == GameMode.NETWORK_MULTIPLAYER:
+            if "You win" in winner_text:
+                winner_icon = "emblem-favorite"
+            else:
+                winner_icon = "avatar-user"
+        
+        try:
+            parent_window = None
+            widget = self.stack
+            while widget:
+                if isinstance(widget, Gtk.Window):
+                    parent_window = widget
+                    break
+                widget = widget.get_parent()
+            
+            dialog = Gtk.Window()
+            dialog.set_title("Game Over")
+            dialog.set_modal(True)
+            dialog.set_decorated(False)
+            dialog.set_position(Gtk.WindowPosition.CENTER_ALWAYS)
+            dialog.set_border_width(style.LINE_WIDTH)
+            dialog.set_has_resize_grip(False)
+            dialog.set_type_hint(Gdk.WindowTypeHint.DIALOG)
+            
+            if parent_window:
+                dialog.set_transient_for(parent_window)
+            
+            dialog_width = min(500, max(400, self.screen_width // 3))
+            dialog_height = min(350, max(250, self.screen_height // 4))
+            dialog.set_size_request(dialog_width, dialog_height)
+            
+            main_vbox = Gtk.VBox()
+            main_vbox.set_border_width(style.DEFAULT_SPACING)
+            dialog.add(main_vbox)
+            
+            header_box = Gtk.HBox()
+            header_box.set_spacing(style.DEFAULT_SPACING)
+            
+            title_label = Gtk.Label()
+            title_label.set_markup('<span size="x-large" weight="bold">Game Over!</span>')
+            title_label.set_halign(Gtk.Align.START)
+            header_box.pack_start(title_label, True, True, 0)
+            
+            close_button = Gtk.Button()
+            close_button.set_relief(Gtk.ReliefStyle.NONE)
+            close_button.set_tooltip_text('Close')
+            close_button.set_size_request(32, 32)
+            
+            try:
+                close_icon = Icon(icon_name='dialog-cancel', pixel_size=20)
+                close_button.add(close_icon)
+            except Exception as e:
+                close_label = Gtk.Label()
+                close_label.set_markup('<span size="large" weight="bold">✕</span>')
+                close_button.add(close_label)
+            
+            close_button.connect('clicked', self._on_close_dialog_clicked, dialog)
+            header_box.pack_end(close_button, False, False, 0)
+            
+            main_vbox.pack_start(header_box, False, False, 0)
+            
+            separator = Gtk.HSeparator()
+            main_vbox.pack_start(separator, False, False, style.DEFAULT_SPACING)
+            
+            content_box = Gtk.VBox(spacing=style.DEFAULT_SPACING)
+            content_box.set_halign(Gtk.Align.CENTER)
+            content_box.set_valign(Gtk.Align.CENTER)
+            content_box.set_hexpand(True)
+            content_box.set_vexpand(True)
+            
+            winner_icon_widget = Icon(
+                icon_name=winner_icon,
+                pixel_size=style.XLARGE_ICON_SIZE,
+                xo_color=XoColor('#00FF00,#008000') if "You win" in winner_text else XoColor()
+            )
+            content_box.pack_start(winner_icon_widget, False, False, 0)
+            
+            winner_label = Gtk.Label()
+            winner_color = '#4CAF50' if "You win" in winner_text else '#2196F3'
+            winner_label.set_markup(f'<span size="xx-large" weight="bold" color="{winner_color}">{winner_text}</span>')
+            winner_label.set_halign(Gtk.Align.CENTER)
+            content_box.pack_start(winner_label, False, False, style.DEFAULT_SPACING)
+            
+            stats_box = Gtk.VBox(spacing=5)
+            stats_box.set_halign(Gtk.Align.CENTER)
+            
+            steps_label = Gtk.Label()
+            steps_label.set_markup(f'<span size="large">Total Steps: <b>{self.total_steps}</b></span>')
+            stats_box.pack_start(steps_label, False, False, 0)
+            
+            steps_type = "Even" if is_total_even else "Odd"
+            steps_color = '#4CAF50' if is_total_even else '#FF9800'
+            type_label = Gtk.Label()
+            type_label.set_markup(f'<span size="medium" color="{steps_color}">({steps_type} number)</span>')
+            stats_box.pack_start(type_label, False, False, 0)
+            
+            grid_label = Gtk.Label()
+            grid_label.set_markup(f'<span size="medium">Grid Size: {self.N}</span>')
+            stats_box.pack_start(grid_label, False, False, 0)
+            
+            content_box.pack_start(stats_box, False, False, style.DEFAULT_SPACING)
+            
+            main_vbox.pack_start(content_box, True, True, 0)
+            
+            self._apply_dialog_styling(dialog)
+            
+            dialog.show_all()
+            
+            dialog.connect('key-press-event', self._on_dialog_key_press)
+            
+        except Exception as e:
+            print(f"ERROR: Could not show Sugar-style dialog: {e}")
+            import traceback
+            traceback.print_exc()
+            self._show_simple_game_over_fallback(winner_text)
+        
+        return False
+    
+    def _apply_dialog_styling(self, dialog):
+        """Apply Sugar-style theming to the dialog"""
+        try:
+            theme_colors = Theme.LIGHT if self.current_theme == 'LIGHT' else Theme.DARK
+            bg_color = self._rgb_to_gdk(theme_colors['BG'])
+            
+            dialog.override_background_color(Gtk.StateFlags.NORMAL, bg_color)
+            
+            css_provider = Gtk.CssProvider()
+            dialog_bg = self._rgb_to_css(theme_colors['CARD_BG'])
+            text_color = self._rgb_to_css(theme_colors['TEXT'])
+            border_color = self._rgb_to_css(theme_colors['GRAY_DARK'])
+            
+            css_data = f"""
+            window {{
+                background-color: {dialog_bg};
+                border: 2px solid {border_color};
+                border-radius: 8px;
+            }}
+            
+            label {{
+                color: {text_color};
+            }}
+            
+            button {{
+                border-radius: 6px;
+                padding: 8px 16px;
+                border: 1px solid {border_color};
+            }}
+            
+            /* Style for the close button to be always visible */
+            button:not(:hover) {{
+                background-color: transparent;
+                border: none;
+            }}
+            
+            button:hover {{
+                background-color: rgba(255, 255, 255, 0.1);
+                border-radius: 4px;
+            }}
+            
+            separator {{
+                color: {border_color};
+            }}
+            """.encode('utf-8')
+            
+            css_provider.load_from_data(css_data)
+            
+            style_context = dialog.get_style_context()
+            style_context.add_provider(css_provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+            
+        except Exception as e:
+            print(f"ERROR: Failed to apply dialog styling: {e}")
+
+    def _on_dialog_key_press(self, dialog, event):
+        """Handle keyboard events in the dialog"""
+        keyname = Gdk.keyval_name(event.keyval)
+        if keyname == 'Escape' or keyname == 'Return':
+            dialog.destroy()
+            self.show_menu()
+        return False
+
+    def _on_close_dialog_clicked(self, button, dialog):
+        """Handle close button click - return to menu"""
+        dialog.destroy()
+        self.show_menu()
+
+    def _show_simple_game_over_fallback(self, winner_text):
+        """Fallback to simple dialog if Sugar-style dialog fails"""
         try:
             parent = None
             widget = self.stack
@@ -420,10 +621,8 @@ class Game:
             dialog.show()
             
         except Exception as e:
-            print(f"ERROR: Could not show dialog: {e}")
+            print(f"ERROR: Even fallback dialog failed: {e}")
             GLib.timeout_add(2000, lambda: self.show_menu())
-        
-        return False
     
     def _create_cell_content(self, cell_index):
         """Create the content for a cell (image + number)"""
@@ -771,11 +970,6 @@ class Game:
                     print(f"ERROR: Failed to update network button: {e}")
             else:
                 print("WARNING: network_button not available")
-            
-            if (self.game_mode == GameMode.NETWORK_MULTIPLAYER and 
-                hasattr(self, 'game_started') and self.game_started):
-                self._handle_opponent_disconnect()
-
     def on_message_received(self, buddy, message):
         """Handle incoming collaboration messages"""
         if not isinstance(message, dict):
@@ -886,110 +1080,10 @@ class Game:
             self.stack.set_visible_child_name("game_page")
             
             self._create_game_grid()
-            
-            if self.is_host:
-                self._show_game_start_message("You are Player 1 (Host). You start first!")
-            else:
-                self._show_game_start_message("You are Player 2 (Guest). Wait for Player 1...")
-                
         except Exception as e:
             print(f"ERROR: Failed to initialize network game: {e}")
             import traceback
             traceback.print_exc()
-
-    def _create_network_game_grid(self):
-        """Create game grid specifically for network games with synchronized N value"""
-        
-        if hasattr(self, 'grid_container'):
-            for child in self.grid_container.get_children():
-                child.destroy()
-        
-        cell_width = 60
-        cell_spacing = 5
-        margin = 40
-        available_width = self.screen_width - (2 * margin)
-        
-        cells_per_row = max(1, available_width // (cell_width + cell_spacing))
-        
-        if self.N <= cells_per_row:
-            rows = 1
-            cells_in_rows = [self.N]
-        elif self.N <= cells_per_row * 2:
-            rows = 2
-            cells_first_row = (self.N + 1) // 2
-            cells_in_rows = [cells_first_row, self.N - cells_first_row]
-        else:
-            rows = 3
-            cells_per_full_row = self.N // 3
-            extra_cells = self.N % 3
-            cells_in_rows = []
-            for i in range(3):
-                cells_in_this_row = cells_per_full_row + (1 if i < extra_cells else 0)
-                cells_in_rows.append(cells_in_this_row)
-        
-        self.cell_contents = []
-        cell_index = self.N - 1
-        
-        grid_box = Gtk.VBox(spacing=5, halign=Gtk.Align.CENTER)
-        
-        for row in range(rows):
-            row_box = Gtk.HBox(spacing=5, halign=Gtk.Align.CENTER)
-            
-            for col in range(cells_in_rows[row]):
-                cell_content, image_container, number_label = self._create_cell_content(cell_index)
-                
-                cell_frame = Gtk.Frame(shadow_type=Gtk.ShadowType.OUT)
-                cell_frame.set_size_request(cell_width, 60)
-                cell_frame.add(cell_content)
-                
-                row_box.pack_start(cell_frame, False, False, 0)
-                
-                self.cell_contents.insert(0, {
-                    'container': cell_content,
-                    'image': image_container,
-                    'label': number_label,
-                    'index': cell_index
-                })
-                
-                cell_index -= 1
-        
-            grid_box.pack_start(row_box, False, False, 0)
-        
-        if hasattr(self, 'grid_container'):
-            self.grid_container.pack_start(grid_box, False, False, 0)
-            self.grid_container.show_all()
-        
-        self._apply_theme()
-        self._update_ui_state()
-        
-    def _show_game_start_message(self, message):
-        """Show a temporary message when game starts"""
-        try:
-            parent = None
-            widget = self.stack
-            while widget:
-                if isinstance(widget, Gtk.Window):
-                    parent = widget
-                    break
-                widget = widget.get_parent()
-            
-            dialog = Gtk.MessageDialog(
-                parent=parent,
-                flags=0,
-                message_type=Gtk.MessageType.INFO,
-                buttons=Gtk.ButtonsType.OK,
-                text="Network Game Started!"
-            )
-            dialog.format_secondary_text(message)
-            
-            def on_response(dialog, response):
-                dialog.destroy()
-            
-            dialog.connect('response', on_response)
-            dialog.show()
-            
-        except Exception as e:
-            print(f"ERROR: Could not show game start dialog: {e}")
 
     def get_game_state_for_sync(self):
         """Get current game state for syncing with joining player"""
