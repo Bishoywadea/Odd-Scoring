@@ -154,12 +154,14 @@ class Game:
         
         try:
             print("Starting direct network game...")
+            self._reset_for_network_game()
             self.game_mode = GameMode.NETWORK_MULTIPLAYER
             self.is_host = True
             self.my_player_number = 1
             self.game_started = True
             
             N = random.randint(8, 20)
+            self.N = N
             
             initial_state = {
                 'action': 'game_start',
@@ -168,6 +170,7 @@ class Game:
                 'host_player': 1,
                 'guest_player': 2
             }
+            print(f"Host starting new game with N={N}")
             
             if self._collab:
                 self._collab.post(initial_state)
@@ -184,6 +187,7 @@ class Game:
 
     def show_menu(self):
         """Show the main menu"""
+        self.game_mode = None
         self.stack.set_visible_child_name("menu_page")
         
     def _start_game(self, widget, mode):
@@ -226,11 +230,10 @@ class Game:
         
         if hasattr(self, 'grid_container'):
             for child in self.grid_container.get_children():
+                self.grid_container.remove(child)
                 child.destroy()
         
         self.game_started = False
-        self.opponent_buddy = None
-        self.network_players = []
 
     def _get_my_nick(self):
         """Get our own nickname for display"""
@@ -288,6 +291,8 @@ class Game:
         self.main_box = main_container
 
     def _on_menu_clicked(self, button=None):
+        if self.game_mode == GameMode.NETWORK_MULTIPLAYER:
+            self.game_started = False
         self.show_menu()
     
     def _player_move(self, widget, steps):
@@ -544,6 +549,10 @@ class Game:
         if not hasattr(self, 'grid_container'):
             print("ERROR: grid_container not found!")
             return
+
+        for child in self.grid_container.get_children():
+            self.grid_container.remove(child)
+            child.destroy()
         
         cell_width = 60
         cell_spacing = 5
@@ -774,18 +783,17 @@ class Game:
             return
             
         action = message.get('action')
+        print(f"Received message: {action} from {buddy.props.nick}")
         
         if action == 'game_start':
-            if not hasattr(self, 'game_started') or not self.game_started:
-                print("Received game start signal, joining as guest")
-                self.game_mode = GameMode.NETWORK_MULTIPLAYER
-                self.is_host = False
-                self.my_player_number = 2
-                self.game_started = True
-                self.opponent_buddy = buddy
-                
-                self._init_network_game(message)
-                self.stack.set_visible_child_name("game_page")
+            self._reset_for_network_game()
+            self.game_mode = GameMode.NETWORK_MULTIPLAYER
+            self.is_host = False
+            self.my_player_number = 2
+            self.game_started = True
+            self.opponent_buddy = buddy
+            print(f"Guest joining game: N={message.get('N')}")
+            self._init_network_game(message)
         
         elif action == 'move':
             if (self.game_mode == GameMode.NETWORK_MULTIPLAYER and 
@@ -865,32 +873,37 @@ class Game:
         """Initialize the network game with given state"""
         print(f"Initializing network game with state: {initial_state}")
         
-        self.game_mode = GameMode.NETWORK_MULTIPLAYER
-        
-        self.N = initial_state['N']
-        self.current_position = self.N - 1
-        self.total_steps = 0
-        self.current_player = initial_state['current_player']
-        self.game_over = False
-        
-        self.stack.set_visible_child_name("game_page")
-        
-        self._create_game_grid()
-        
-        if self.is_host:
-            self._show_game_start_message("You are Player 1. You start!")
-        else:
-            self._show_game_start_message("You are Player 2. Waiting for Player 1...")
+        try:
+            self.game_mode = GameMode.NETWORK_MULTIPLAYER
+            
+            self.N = initial_state['N']
+            self.current_position = self.N - 1
+            self.total_steps = 0
+            self.current_player = initial_state['current_player']
+            self.game_over = False
+            print(f"Game initialized: N={self.N}, start_pos={self.current_position}")
+            
+            self.stack.set_visible_child_name("game_page")
+            
+            self._create_game_grid()
+            
+            if self.is_host:
+                self._show_game_start_message("You are Player 1 (Host). You start first!")
+            else:
+                self._show_game_start_message("You are Player 2 (Guest). Wait for Player 1...")
+                
+        except Exception as e:
+            print(f"ERROR: Failed to initialize network game: {e}")
+            import traceback
+            traceback.print_exc()
 
     def _create_network_game_grid(self):
         """Create game grid specifically for network games with synchronized N value"""
         
-        # Clear existing grid
         if hasattr(self, 'grid_container'):
             for child in self.grid_container.get_children():
                 child.destroy()
         
-        # Calculate grid layout based on screen width (same logic as reset_game)
         cell_width = 60
         cell_spacing = 5
         margin = 40
@@ -914,7 +927,6 @@ class Game:
                 cells_in_this_row = cells_per_full_row + (1 if i < extra_cells else 0)
                 cells_in_rows.append(cells_in_this_row)
         
-        # Create the grid
         self.cell_contents = []
         cell_index = self.N - 1
         
@@ -924,7 +936,6 @@ class Game:
             row_box = Gtk.HBox(spacing=5, halign=Gtk.Align.CENTER)
             
             for col in range(cells_in_rows[row]):
-                # Create cell content
                 cell_content, image_container, number_label = self._create_cell_content(cell_index)
                 
                 cell_frame = Gtk.Frame(shadow_type=Gtk.ShadowType.OUT)
