@@ -16,7 +16,7 @@
 
 import gi
 gi.require_version('Gtk', '3.0')
-from gi.repository import Gtk, GLib
+from gi.repository import Gtk, Gdk, GLib
 from sugar3.activity import activity
 from sugar3.graphics.toolbarbox import ToolbarBox
 from sugar3.activity.widgets import ActivityToolbarButton
@@ -131,7 +131,7 @@ class OddScoring(activity.Activity):
         # Help button
         self.help_button = ToolButton("toolbar-help")
         self.help_button.set_tooltip("Help")
-        self._setup_help_palette()
+        self.help_button.connect("clicked", self._show_help)
         toolbar_box.toolbar.insert(self.help_button, -1)
         self.help_button.show()
         
@@ -149,111 +149,156 @@ class OddScoring(activity.Activity):
         self.set_toolbar_box(toolbar_box)
         toolbar_box.show_all()
     
-    def _setup_help_palette(self):
-        """Create a Sugar-style help palette"""
-        palette = Palette('Help')
-        palette.props.primary_text = 'Odd Scoring Game Help'
-        palette.props.secondary_text = 'Learn how to play the Odd Scoring puzzle game'
+    def _show_help(self, button):
+        """Show the help dialog when help button is clicked."""
+        help_message = """About the Odd Scoring Game:
+The Odd Scoring Game is a strategic mathematical puzzle that combines position-based movement with parity theory (even/odd numbers). Players must think several moves ahead to control whether the total number of steps taken will be even or odd.
+
+Game Objective:
+Move your character from the starting position to cell 0 (the finish line). The twist: your victory depends on whether the total number of steps taken throughout the game is even or odd!
+
+How to Play:
+1. Your character starts at the highest numbered cell on the board
+2. On each turn, choose to move 1, 2, or 3 spaces toward position 0
+3. You can only move toward 0 - no moving backwards or staying in place
+4. The game ends when any player reaches cell 0
+5. Victory is determined by the total step count being even or odd
+
+Winning Conditions:
+• If the total number of steps is EVEN → You win!
+• If the total number of steps is ODD → Your opponent wins!
+
+Game Modes:
+• Single Player: Practice against an AI opponent
+• Two Player: Challenge a friend on the same device
+• Collaborative: Share the game with other Sugar users over the network
+"""
         
-        help_content = Gtk.VBox(spacing=style.DEFAULT_SPACING)
-        help_content.set_border_width(style.DEFAULT_SPACING)
-        
-        desc_label = Gtk.Label()
-        desc_label.set_markup('<b>About the Game:</b>')
-        desc_label.set_alignment(0, 0.5)
-        help_content.pack_start(desc_label, False, False, 0)
-        
-        desc_text = Gtk.Label()
-        desc_text.set_text('The Odd Scoring game challenges you to reach position 0\n'
-                        'by making strategic moves. Victory depends on the total\n'
-                        'number of steps taken being even or odd!')
-        desc_text.set_alignment(0, 0.5)
-        desc_text.set_line_wrap(True)
-        desc_text.set_max_width_chars(style.MENU_WIDTH_CHARS)
-        help_content.pack_start(desc_text, False, False, 0)
-        
-        play_label = Gtk.Label()
-        play_label.set_markup('<b>How to Play:</b>')
-        play_label.set_alignment(0, 0.5)
-        help_content.pack_start(play_label, False, False, style.DEFAULT_SPACING)
-        
-        rules_grid = Gtk.Grid()
-        rules_grid.set_column_spacing(style.DEFAULT_SPACING)
-        rules_grid.set_row_spacing(2)
-        
-        rules = [
-            ('Start:', 'Character begins at the highest numbered cell'),
-            ('Moves:', 'Take turns moving 1, 2, or 3 spaces toward 0'),
-            ('Goal:', 'Reach cell 0 (the finish line)'),
-            ('Winner:', 'Player who benefits from total steps being even/odd'),
-        ]
-        
-        for i, (rule, description) in enumerate(rules):
-            rule_label = Gtk.Label()
-            rule_label.set_text(rule)
-            rule_label.set_alignment(0, 0.5)
-            rule_label.set_markup(f'<b>{rule}</b>')
+        self._show_dialog("Odd Scoring Game Help", help_message)
+
+    def _show_dialog(self, title, message):
+        """Show custom help dialog with Sugar styling"""
+        try:
+            from sugar3.graphics import style
+            parent_window = self.get_toplevel()
             
-            desc_label = Gtk.Label()
-            desc_label.set_text(description)
-            desc_label.set_alignment(0, 0.5)
-            desc_label.set_line_wrap(True)
-            desc_label.set_max_width_chars(35)
+            dialog = Gtk.Window()
+            dialog.set_title(title)
+            dialog.set_modal(True)
+            dialog.set_decorated(False)
+            dialog.set_position(Gtk.WindowPosition.CENTER_ALWAYS)
+            dialog.set_border_width(style.LINE_WIDTH)
+            dialog.set_transient_for(parent_window)
             
-            rules_grid.attach(rule_label, 0, i, 1, 1)
-            rules_grid.attach(desc_label, 1, i, 1, 1)
-        
-        help_content.pack_start(rules_grid, False, False, 0)
-        
-        winning_label = Gtk.Label()
-        winning_label.set_markup('<b>Winning Conditions:</b>')
-        winning_label.set_alignment(0, 0.5)
-        help_content.pack_start(winning_label, False, False, style.DEFAULT_SPACING)
-        
-        winning_text = Gtk.Label()
-        winning_text.set_text('• If total steps is EVEN → You win!\n'
-                            '• If total steps is ODD → Opponent wins!')
-        winning_text.set_alignment(0, 0.5)
-        winning_text.set_line_wrap(True)
-        winning_text.set_max_width_chars(style.MENU_WIDTH_CHARS)
-        help_content.pack_start(winning_text, False, False, 0)
-        
-        controls_label = Gtk.Label()
-        controls_label.set_markup('<b>Controls:</b>')
-        controls_label.set_alignment(0, 0.5)
-        help_content.pack_start(controls_label, False, False, style.DEFAULT_SPACING)
-        
-        controls_grid = Gtk.Grid()
-        controls_grid.set_column_spacing(style.DEFAULT_SPACING)
-        controls_grid.set_row_spacing(2)
-        
-        controls = [
-            ('Move 1:', 'Click "Move 1" button'),
-            ('Move 2:', 'Click "Move 2" button'),
-            ('Move 3:', 'Click "Move 3" button'),
-            ('Reset:', 'Click reset button in toolbar'),
-            ('Theme:', 'Click theme button to change appearance'),
-        ]
-        
-        for i, (action, method) in enumerate(controls):
-            action_label = Gtk.Label()
-            action_label.set_text(action)
-            action_label.set_alignment(0, 0.5)
-            action_label.set_markup(f'<tt>{action}</tt>')
+            dialog_width = min(700, max(500, self.get_allocated_width() * 3 // 4))
+            dialog_height = min(600, max(400, self.get_allocated_height() * 3 // 4))
+            dialog.set_size_request(dialog_width, dialog_height)
             
-            method_label = Gtk.Label()
-            method_label.set_text(method)
-            method_label.set_alignment(0, 0.5)
+            main_vbox = Gtk.VBox()
+            main_vbox.set_border_width(style.DEFAULT_SPACING)
+            dialog.add(main_vbox)
             
-            controls_grid.attach(action_label, 0, i, 1, 1)
-            controls_grid.attach(method_label, 1, i, 1, 1)
-        
-        help_content.pack_start(controls_grid, False, False, 0)
-        
-        palette.set_content(help_content)
-        help_content.show_all()
-        
-        self.help_button.set_palette(palette)
+            header_box = Gtk.HBox()
+            header_box.set_spacing(style.DEFAULT_SPACING)
+            
+            title_label = Gtk.Label()
+            title_label.set_markup(f'<span size="large" weight="bold">{title}</span>')
+            header_box.pack_start(title_label, True, True, 0)
+            
+            close_button = Gtk.Button()
+            close_button.set_relief(Gtk.ReliefStyle.NONE)
+            close_button.set_size_request(40, 40)
+            
+            try:
+                from sugar3.graphics.icon import Icon
+                close_icon = Icon(icon_name='dialog-cancel', pixel_size=24)
+                close_button.add(close_icon)
+            except:
+                close_label = Gtk.Label()
+                close_label.set_markup('<span size="x-large" weight="bold">✕</span>')
+                close_button.add(close_label)
+            
+            close_button.connect('clicked', lambda b: dialog.destroy())
+            header_box.pack_end(close_button, False, False, 0)
+            
+            main_vbox.pack_start(header_box, False, False, 0)
+            
+            separator = Gtk.HSeparator()
+            main_vbox.pack_start(separator, False, False, style.DEFAULT_SPACING)
+            
+            scrolled = Gtk.ScrolledWindow()
+            scrolled.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
+            scrolled.set_hexpand(True)
+            scrolled.set_vexpand(True)
+            
+            content_label = Gtk.Label()
+            content_label.set_text(message)
+            content_label.set_halign(Gtk.Align.START)
+            content_label.set_valign(Gtk.Align.START)
+            content_label.set_line_wrap(True)
+            content_label.set_max_width_chars(90)
+            content_label.set_selectable(True)
+            content_label.set_margin_left(15)
+            content_label.set_margin_right(15)
+            content_label.set_margin_top(15)
+            content_label.set_margin_bottom(15)
+            
+            scrolled.add(content_label)
+            main_vbox.pack_start(scrolled, True, True, 0)
+            
+            try:
+                css_provider = Gtk.CssProvider()
+                css_data = """
+                window {
+                    background-color: #ffffff;
+                    border: 3px solid #4A90E2;
+                    border-radius: 12px;
+                }
+                label {
+                    color: #333333;
+                }
+                button {
+                    border-radius: 20px;
+                }
+                button:hover {
+                    background-color: rgba(74, 144, 226, 0.1);
+                }
+                scrolledwindow {
+                    border: 1px solid #e0e0e0;
+                    border-radius: 6px;
+                }
+                """.encode('utf-8')
+                
+                css_provider.load_from_data(css_data)
+                style_context = dialog.get_style_context()
+                style_context.add_provider(css_provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+            except Exception as css_error:
+                print(f"CSS styling failed: {css_error}")
+            
+            dialog.show_all()
+            
+            dialog.connect('key-press-event', 
+                        lambda d, e: d.destroy() if Gdk.keyval_name(e.keyval) == 'Escape' else False)
+            
+        except Exception as e:
+            print(f"Error showing help dialog: {e}")
+            self._show_simple_help_fallback()
+
+    def _show_simple_help_fallback(self):
+        """Simple fallback help dialog if custom dialog fails"""
+        dialog = Gtk.MessageDialog(
+            parent=self.get_toplevel(),
+            flags=0,
+            message_type=Gtk.MessageType.INFO,
+            buttons=Gtk.ButtonsType.OK,
+            text=_("Odd Scoring Game Help"),
+        )
+        dialog.format_secondary_text(
+            _("Move from the starting position to cell 0. Victory depends on "
+              "whether the total steps taken is even or odd! Use Move 1, 2, or 3 buttons.")
+        )
+        dialog.run()
+        dialog.destroy()
     
     def _toggle_theme(self, button):
         """Toggle theme"""
